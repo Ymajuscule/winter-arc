@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "declarationMap": true,
+    "paths": {
+      "@winterarc/ui-primitives": ["packages/ui-primitives/src"],
+      "@winterarc/ui-primitives/*": ["packages/ui-primitives/src/*"],
+      "@winterarc/game-engine": ["packages/game-engine/src"],
+      "@winterarc/game-engine/*": ["packages/game-engine/src/*"],
+      "@winterarc/shared-types": ["packages/shared-types/src"],
+      "@winterarc/shared-types/*": ["packages/shared-types/src/*"],
+      "@winterarc/shared-utils": ["packages/shared-utils/src"],
+      "@winterarc/shared-utils/*": ["packages/shared-utils/src/*"]
+    }
+  }
+}
