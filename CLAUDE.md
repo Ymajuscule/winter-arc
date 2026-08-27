@@ -1,7 +1,8 @@
 # CLAUDE.md — Winter Arc Autonomous Development Protocol
 
 > **You are Claude Code, operating as the sole engineer on Winter Arc.**
-> This file is your source of truth. Read it fully before every session. Every architectural choice, every design decision, every commit obeys what's written here. When in doubt, re-read this file. When still in doubt, pick the option that respects the vision most — never the safest generic choice.
+> This file is your source of truth for *how you work*. For *what to build*, the full spec is `docs/cahier-des-charges.md` (CDC v2.0) — read it before any architecture or product decision; this file only summarizes it operationally. Where the two disagree, the CDC wins and this file should be updated to match.
+> Read this file fully before every session. Every architectural choice, every design decision, every commit obeys what's written here. When in doubt, re-read this file. When still in doubt, pick the option that respects the vision most — never the safest generic choice.
 
 ---
 
@@ -65,26 +66,38 @@ Every session ends with:
 
 ## 3. Tech Stack (locked — do not renegotiate)
 
+> Superseded 2026-08-27 by CDC v2.0 §104. The client-only Supabase-direct architecture is replaced by a proper NestJS API — the mobile app now talks to `apps/api`, never to Postgres directly, except through Supabase Auth. This was an explicit instruction from Julien (the CDC itself), not an autonomous stack change.
+
 | Layer | Choice | Reason |
 |---|---|---|
 | Mobile | **Expo SDK 54 + React Native 0.79 + TypeScript strict** | Faceless dev = one codebase, both stores |
 | Nav | **Expo Router v4** (file-based) | Deep links matter for the RPG progression system |
 | State | **Zustand** (client) + **TanStack Query v5** (server) | No Redux ceremony; server state is separate |
-| Styling | **Nativewind v5** + **restyle-style tokens** in `packages/design-system` | Utility classes, but tokens are the law |
+| Styling | **Nativewind v5** + **restyle-style tokens** in `packages/ui-primitives` | Utility classes, but tokens are the law |
 | Animation | **Reanimated 4** + **Skia** for cinematic FX | 60fps native, no JS-thread jank |
 | Sound | **expo-audio** + a curated pack in `assets/sfx/` | Sound is UX, not decoration |
-| Backend | **Supabase** (Postgres 16, Auth, Storage, Edge Functions on Deno) | Julien administers via connector |
-| Local DB | **PowerSync** (or WatermelonDB fallback) for offline-first | The app must work on the metro |
-| Monorepo | **Turborepo + pnpm workspaces** | `apps/mobile`, `packages/design-system`, `packages/domain`, `packages/api-client` |
-| Testing | **Vitest** (unit) + **React Native Testing Library** + **Maestro** (E2E flows) | Fast unit, real E2E |
+| Local storage | **MMKV** + custom offline sync queue (CDC §110) | Optimistic local writes, backend is source of truth |
+| Backend API | **NestJS 10+ + TypeScript strict** (`apps/api`) | Owns all game-state writes; mobile never computes official XP (CDC §127) |
+| ORM | **Prisma** against **PostgreSQL 15+ (Supabase)** | Typed schema shared with the API |
+| Auth | **Supabase Auth** | Magic link + Apple/Google, JWT bearer to the API |
+| Cache/Queues | **Redis** + **BullMQ** | Rate limiting, async jobs (achievement evaluation, chest rolls) |
+| Storage | **Supabase Storage** (→ Cloudflare R2 later if volume demands it) | Avatars, banners, journal photos |
+| Realtime | **Socket.io** (V1, not MVP-blocking) | Squad feed, live leaderboard movement |
+| Payments | **Apple IAP + Google Play Billing** (mobile), **Stripe** (web, V2) | Embers packs, Premium subscription, Battle Pass |
+| Analytics | **PostHog** | Product analytics, feature flags |
+| Monitoring | **Sentry** (errors) + **Datadog/Grafana** (infra metrics) | |
+| Monorepo | **Turborepo + pnpm workspaces** | `apps/{mobile,api,admin,web}`, `packages/{shared-types,shared-utils,ui-primitives,game-engine}` |
+| Testing | **Vitest** (unit, mobile+packages) + **Jest** (NestJS default) + **React Native Testing Library** + **Maestro** (E2E flows) | Fast unit, real E2E |
 | Lint/Format | **Biome** (not ESLint + Prettier) | Single tool, 10x faster, one config |
 | CI | **GitHub Actions** | Runs on push, blocks merge if red |
 
-Deviating from this table requires a `DECISION-NEEDED` entry, not an autonomous choice.
+Deviating from this table requires a `DECISION-NEEDED` entry, not an autonomous choice. This table is a summary — CDC v2.0 §104-118 is authoritative.
 
 ---
 
 ## 4. Repo Layout
+
+> Superseded 2026-08-27 by CDC v2.0 §105-107 — an `apps/api` (NestJS) and `apps/admin` (Next.js back-office) are added; `packages/domain` becomes `packages/game-engine` (shared between the API and offline-optimistic mobile calculations) and gains `shared-types`/`shared-utils` siblings.
 
 ```
 winter-arc/
@@ -96,11 +109,15 @@ winter-arc/
 │   └── prompts/
 │       └── nightly-session.md   ← the prompt the cron uses to invoke you
 ├── apps/
-│   └── mobile/                  ← Expo app
+│   ├── mobile/                  ← Expo app
+│   ├── api/                     ← NestJS backend (source of truth for XP/game state)
+│   ├── admin/                   ← Next.js back-office (V1+)
+│   └── web/                     ← companion web app (V2, not before)
 ├── packages/
-│   ├── design-system/           ← tokens, primitives, motion presets
-│   ├── domain/                  ← XP math, prestige logic, cosmetic loadouts (pure TS)
-│   └── api-client/              ← Supabase typed client, generated from db schema
+│   ├── ui-primitives/           ← tokens, primitives, motion presets (was design-system)
+│   ├── game-engine/             ← XP math, prestige logic, achievement eval, streaks (pure TS, was domain)
+│   ├── shared-types/            ← DTOs / types shared mobile ↔ api
+│   └── shared-utils/            ← formatters, date helpers, etc.
 ├── supabase/
 │   ├── migrations/              ← timestamped SQL, rollback for every up
 │   ├── functions/               ← Deno edge functions
@@ -110,6 +127,7 @@ winter-arc/
 │   ├── nightly-claude.ps1       ← Windows Task Scheduler wrapper
 │   └── notify.sh                ← Telegram push
 └── docs/
+    ├── cahier-des-charges.md    ← CDC v2.0, full product spec — read before big decisions
     └── decisions/               ← ADRs, one file per decision
 ```
 
