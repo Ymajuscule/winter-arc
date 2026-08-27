@@ -1,7 +1,38 @@
 # SESSION-LOG.md — Winter Arc Nightly Session History
 
 > Newest at top. Each session appends one `## Session YYYY-MM-DD` block.
-> See `.claude/skills/session-report/SKILL.md` for the entry format. (Note: that skill file doesn't exist in this repo yet — see DECISION-NEEDED below.)
+> See `.claude/skills/session-report/SKILL.md` for the entry format.
+
+---
+
+## Session 2026-08-28 (continuation 2, ad-hoc — triggered directly by Julien: "débrouille-toi, intègre le reste et écris le cahier des charges manquant")
+
+### Done
+- **Resolved both standing blockers directly**, per Julien's explicit "handle it yourself" instruction rather than re-escalating:
+  - `packages/game-engine/src/achievements.ts` — designed and implemented the achievement condition DSL the CDC never specified (discriminated union + `all_of`/`any_of`, 6 new tests, 43/43 total green).
+  - `.claude/skills/` — drafted all 10 SKILL.md files referenced since the repo's first commit but never written (cinematic-ui, winter-arc-design-system, supabase-ops, rpg-mechanics, mobile-performance, test-then-ship, todo-manager, git-discipline, winter-arc-architect, session-report), grounded in the CDC and this repo's actual code/docs, not invented from nothing.
+- **Wrote the 5 CDC Annexe C companion documents** Julien asked for ("le cahier des charges manquant"): `docs/architecture-technique.md`, `docs/schema-postgresql.md`, `docs/api-specifications.md`, `docs/design-system.md`, `docs/wireframes.md` (textual wireframes — no Figma access this session). Scoped to Phase 1; later phases get their docs when their phase starts.
+- **Seed data**: `supabase/seed/001-003` — 7 classes, 57 cosmetics (12 avatars, 8 frames, 6 auras, 6 banners, 5 themes, 20 titles — titles are a `cosmetics` category, not a separate table), 30 achievements. Cross-referenced consistently (achievement `cosmetic_reward` ↔ title `unlock_method`).
+- Writing the companion docs and seed data surfaced several real gaps that weren't visible before: no `evaluate-achievements` Edge Function (achievements can't unlock without it despite the catalog existing), no `quest_definitions.condition` DSL (unlike achievements, not yet designed), no active-boosts table, no `user_skills` table for the talent tree, no idempotency keys on mutating functions. All added to TODO.md rather than left implicit in the docs only.
+
+### Blockers
+
+_(none — see "Done" above; both standing ones from prior sessions are resolved)_
+
+### Decisions needed from Julien
+
+_(none escalated this session — per his own instruction, ambiguities were resolved directly and documented inline/in TODO.md instead. If any of the achievements.ts DSL, the skills content, or the companion docs' choices don't match his intent, that's feedback for next session, not a live blocker.)_
+
+### Metrics
+- Commits: 5 (achievements.ts, seed data, skills, companion docs, TODO.md update)
+- Tests: 43/43 green (was 37 at end of prior session)
+- Files touched: ~24 new files
+
+### Next session should
+- Write `evaluate-achievements` — highest-value next Edge Function, the seeded achievement catalog is otherwise inert.
+- Design the `quest_definitions.condition` DSL (mirroring how `achievements.condition` got designed this session) before attempting `claim-quest` or quest rotation.
+- Load real font files into `apps/mobile` via `expo-font` — `ui-primitives`' `Text` component references family names that don't resolve to anything yet, a live Design Law violation.
+- Consider `supabase init` for a local dev stack — Edge Functions have been written but never actually run.
 
 ---
 
