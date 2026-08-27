@@ -1,17 +1,19 @@
 # Cahier des charges — Application mobile « Winter Arc »
 
-**Version :** 2.0
+**Version :** 2.1 (amendée 2026-08-28 — voir note ci-dessous)
 **Type :** Application mobile de développement personnel gamifiée
-**Plateforme cible :** iOS + Android (mobile-first), Web companion (V2)
+**Plateforme cible :** iOS + Android uniquement. Pas de web companion.
 **Technologie mobile :** React Native + Expo
-**Backend :** NestJS
-**Base de données :** PostgreSQL / Supabase
+**Backend :** Supabase seul (Postgres, Auth, Storage, Edge Functions, Realtime) — pas de serveur applicatif séparé
+**Base de données :** PostgreSQL (Supabase)
 **Authentification :** Supabase Auth
-**Paiement :** Apple IAP + Google Play Billing + Stripe (web)
+**Paiement :** Apple IAP + Google Play Billing
 **Analytics :** PostHog
-**Monitoring :** Sentry + Grafana
-**Storage :** Cloudflare R2 / Supabase Storage
+**Monitoring :** Sentry
+**Storage :** Supabase Storage
 
+> **Amendement 2026-08-28 :** la v2.0 originale spécifiait un backend NestJS + Prisma séparé et un web companion en V2. Julien a tranché : pas de serveur applicatif séparé, Supabase (Postgres + Edge Functions + Realtime) est tout le backend, et pas de version web — Expo iOS/Android uniquement. Ce document reflète déjà la décision ; les sections d'architecture (Partie XV) ont été réécrites en conséquence, le reste (mécaniques de jeu, cosmétiques, économie, social...) est inchangé.
+>
 > Ce document est la source de vérité produit pour Winter Arc. `CLAUDE.md` en dérive un résumé opérationnel (stack, layout, design law) ; en cas de divergence, ce fichier fait foi. Voir `TODO.md` pour le découpage en tâches et `SESSION-LOG.md` pour l'historique d'implémentation.
 
 ---
@@ -1467,38 +1469,40 @@ Recap cinématique, livraison récompenses leaderboard, preview saison suivante,
 
 ## §104. Stack global
 
+> **Amendée 2026-08-28.** Pas de backend applicatif séparé : Supabase (Postgres + Auth + Storage + Edge Functions + Realtime) est tout le backend. Pas de web, pas d'admin back-office séparé au MVP — Expo iOS + Android uniquement.
+
 ```
-CLIENT
-├── React Native (Expo SDK 51+)
+CLIENT (Expo — iOS + Android, pas de cible web)
+├── React Native (Expo SDK 57)
 ├── TypeScript strict
 ├── Zustand (state)
-├── React Query (server state + cache)
-├── React Navigation
-├── Reanimated 3 (animations)
+├── TanStack Query v5 (server state + cache, au-dessus du client Supabase)
+├── Expo Router (file-based)
+├── Reanimated 4 (animations)
 ├── Skia (canvas / graphismes avancés)
 ├── MMKV (storage local rapide)
 ├── expo-notifications
 ├── expo-widgets
 ├── i18next
 
-BACKEND
-├── NestJS 10+
-├── TypeScript strict
-├── PostgreSQL 15+
-├── Prisma ORM
-├── Redis (cache, queues, rate limiting)
-├── BullMQ (jobs asynchrones)
-├── Supabase (Auth + Storage) OU auth custom
-├── S3-compatible (R2 / Supabase Storage) pour assets
-├── WebSockets (Socket.io) pour live squad activity
+BACKEND (Supabase seul — pas de serveur applicatif séparé)
+├── PostgreSQL 15+ (Supabase), schéma géré en SQL brut (supabase/migrations/)
+├── Row Level Security — enforcement des permissions au niveau table
+├── Supabase Auth (magic link + Apple/Google) — le mobile s'authentifie directement
+├── Supabase Storage — avatars, bannières, photos de journal
+├── Supabase Edge Functions (Deno/TypeScript) — seul point d'écriture pour tout
+│   ce qui touche à l'intégrité du jeu (XP, currency, achievements, cosmétiques,
+│   coffres, battle pass). Le mobile appelle une Edge Function, jamais la table
+│   directement, pour ces écritures-là (RLS bloque l'écriture directe côté client
+│   sur ces tables — voir supabase/migrations/20260827000000_init_core_schema.sql).
+├── Supabase Realtime (Postgres changes / broadcast) — squad feed, leaderboard live
+├── pg_cron + Edge Functions planifiées — rotation des quêtes, cutoff Grace Period,
+│   reset quotidien (remplace ce qu'un worker BullMQ aurait fait)
 
 INFRASTRUCTURE
-├── Vercel / Railway / Render (backend)
-├── Cloudflare (CDN)
-├── EAS Build (mobile CI/CD)
-├── Sentry (errors)
+├── EAS Build (mobile CI/CD, TestFlight + Play Console)
+├── Sentry (errors — mobile + Edge Functions)
 ├── PostHog (analytics)
-├── Datadog / Grafana (monitoring)
 ```
 
 ## §105. Architecture du repo (monorepo)
@@ -1506,21 +1510,20 @@ INFRASTRUCTURE
 ```
 winter-arc/
 ├── apps/
-│   ├── mobile/         (React Native)
-│   ├── api/            (NestJS)
-│   ├── admin/          (Next.js — back-office)
-│   └── web/            (V2 — companion web)
+│   └── mobile/         (Expo — React Native, iOS + Android)
 ├── packages/
-│   ├── shared-types/
+│   ├── shared-types/    (types partagés mobile ↔ payloads Edge Functions)
 │   ├── shared-utils/
 │   ├── ui-primitives/
-│   └── game-engine/    (règles XP, levels, achievements — partagé)
-├── infra/
+│   └── game-engine/    (règles XP, levels, achievements — partagé mobile + edge functions)
+├── supabase/
+│   ├── migrations/     (schéma SQL, un fichier + son rollback par changement)
+│   └── functions/      (Edge Functions Deno — la seule "couche backend")
 ├── docs/
 └── scripts/
 ```
 
-Utiliser **Turborepo** pour la gestion du monorepo.
+Utiliser **Turborepo** pour la gestion du monorepo. Un seul app dans `apps/` : pas d'`api/`, pas d'`admin/`, pas de `web/`.
 
 ## §106. Architecture mobile — organisation
 
@@ -1552,7 +1555,7 @@ apps/mobile/src/
 │   ├── settings/
 │   └── widgets/
 ├── navigation/
-├── services/           (API clients, storage)
+├── services/           (client Supabase, appels Edge Functions, storage)
 ├── stores/             (zustand)
 ├── hooks/
 ├── lib/                (helpers)
@@ -1569,55 +1572,31 @@ apps/mobile/src/
 
 ## §107. Architecture backend — organisation
 
+Pas de framework serveur : la "couche backend" est un ensemble d'Edge Functions Supabase (Deno), chacune une frontière d'intégrité étroite plutôt qu'un contrôleur REST. Elles importent `packages/game-engine` pour le calcul (même logique que le mobile utilise en optimiste) et écrivent avec la clé service role, qui contourne RLS par design.
+
 ```
-apps/api/src/
-├── main.ts
-├── app.module.ts
-├── config/
-├── common/
-│   ├── decorators/
-│   ├── filters/
-│   ├── guards/
-│   ├── interceptors/
-│   └── pipes/
-├── modules/
-│   ├── auth/
-│   ├── users/
-│   ├── profiles/
-│   ├── cosmetics/      (LARGE module)
-│   ├── arcs/
-│   ├── habits/
-│   ├── habit-logs/
-│   ├── quests/
-│   ├── xp/
-│   ├── levels/
-│   ├── prestige/
-│   ├── skill-points/
-│   ├── classes/
-│   ├── achievements/
-│   ├── titles/
-│   ├── streaks/
-│   ├── stats/
-│   ├── squads/
-│   ├── challenges/
-│   ├── leaderboards/
-│   ├── shop/
-│   ├── chests/
-│   ├── battle-pass/
-│   ├── seasons/
-│   ├── currencies/     (Coins + Embers)
-│   ├── notifications/
-│   ├── analytics/
-│   ├── insights/
-│   ├── subscriptions/
-│   ├── payments/
-│   └── admin/
-├── game-engine/        (logique de calcul XP, achievements, streaks)
-├── jobs/               (BullMQ workers)
-└── prisma/
+supabase/functions/
+├── _shared/             (client Supabase admin, auth helpers, réponses JSON communes)
+├── award-habit-xp/      (complétion d'habitude → xp_transactions, habit_logs, streaks)
+├── claim-quest/         (validation + récompense d'une quête)
+├── evaluate-achievements/ (déclenché après award-habit-xp / claim-quest / streak update)
+├── advance-streak/      (avancement quotidien des streaks, freeze, comeback)
+├── apply-prestige/
+├── spend-skill-point/
+├── open-chest/          (roll + anti-doublon → fragments)
+├── shop-purchase/
+├── battle-pass-claim-tier/
+├── squad-quest-progress/
+├── rotate-quests/        (planifiée via pg_cron — génère les daily/weekly/monthly)
+├── grace-period-cutoff/  (planifiée — clôture les streaks après 00:00-03:00)
+└── verify-iap-receipt/   (Apple/Google — active Premium / Battle Pass premium)
 ```
 
+Chaque dossier = une Edge Function déployable indépendamment (`supabase functions deploy <name>`). Les tables sensibles (xp_transactions, user_currency, user_cosmetics, user_achievements, chests, battle_passes...) n'ont pas de policy RLS d'écriture pour le rôle `authenticated` — seules ces fonctions (rôle service) y écrivent, ce qui matérialise le principe anti-triche CDC §127 sans NestJS.
+
 ## §108. Schéma DB principal (extrait)
+
+> Implémenté en SQL brut (`supabase/migrations/`), pas via Prisma (pas de backend NestJS pour le porter). L'extrait ci-dessous reste la référence conceptuelle du modèle — voir la migration pour le schéma réel, RLS incluse.
 
 ```prisma
 model User {
@@ -1735,27 +1714,27 @@ model BattlePass {
 
 ## §109. Game Engine (module central)
 
-Package "game-engine" partagé (backend + tests offline mobile) : `calculateXP`, `calculateLevelFromXP`, `evaluateAchievements`, `updateStreak`, `calculateStatGains`, `evaluateQuestProgress`, `applyClassBonuses`, `rollChest`. Le mobile peut faire des calculs offline optimistes, le backend valide — logique mono-source.
+Package "game-engine" partagé (Edge Functions + calcul optimiste mobile) : `calculateXP`, `calculateLevelFromXP`, `evaluateAchievements`, `updateStreak`, `calculateStatGains`, `evaluateQuestProgress`, `applyClassBonuses`, `rollChest`. Le mobile peut faire des calculs offline optimistes, l'Edge Function qui écrit réellement en base fait foi — logique mono-source (le même package TS tourne des deux côtés, sur Deno côté fonction et sur Hermes côté mobile).
 
 ## §110. Synchronisation offline-first
 
 1. Action enregistrée localement immédiatement (MMKV)
-2. Queue de synchronisation → backend dès que le réseau est disponible
-3. Backend = source de vérité (recalcule XP, achievements, etc.)
+2. Queue de synchronisation → appel de l'Edge Function correspondante dès que le réseau est disponible
+3. L'Edge Function = source de vérité (recalcule XP, achievements, etc. via `game-engine`, écrit avec la clé service role)
 4. Mobile applique les corrections retournées (ajustement optimiste)
-5. Cache serveur → React Query gère l'invalidation
+5. Cache local → TanStack Query gère l'invalidation, Supabase Realtime pousse les mises à jour venant d'autres sources (squad, événements)
 
-## §111. WebSockets (temps réel)
+## §111. Temps réel
 
-Squad chat, squad activity feed, notifications de rangs (leaderboard), encouragements en direct. Pas critique au MVP — V1.
+Squad chat, squad activity feed, notifications de rangs (leaderboard), encouragements en direct : **Supabase Realtime** (Postgres changes + broadcast channels), pas de serveur WebSocket dédié. Pas critique au MVP — V1.
 
 ## §112. API — style et conventions
 
-REST + versioning (`/api/v1/...`), JSON:API-like, JWT Bearer + refresh token, rate limiting global + par endpoint sensible, OpenAPI (Swagger) auto-généré, SDK typé partagé (@winterarc/sdk).
+Pas de REST maison : le mobile parle à Supabase de deux façons — (1) lecture directe via le client Supabase + RLS pour tout ce qui est en lecture seule (catalogues, ses propres lignes), (2) `supabase.functions.invoke('<name>', { body })` pour toute écriture qui touche à l'intégrité du jeu, listée en §107. Auth : JWT Supabase (le client le gère). Rate limiting et validation des payloads vivent dans chaque Edge Function. Types partagés dans `packages/shared-types`, générés en partie via `supabase gen types typescript`.
 
-## §113. Endpoints principaux (extrait)
+## §113. Points d'entrée principaux (extrait)
 
-Voir le CDC complet pour la liste exhaustive : auth, users & profiles, arcs, habits, quests, gamification (xp/level/prestige/skill-points/class/stats/streaks), achievements & titles, cosmetics, currencies & shop, chests, battle pass, social (squads/challenges/leaderboards), notifications, analytics, subscriptions.
+Lecture directe (RLS) : profils, catalogues (classes, cosmetics, achievements, quest_definitions), historique personnel (arcs, habits, xp_transactions, streaks...). Écriture via Edge Function (§107) : tout ce qui accorde de l'XP, de la monnaie, un cosmétique, un achievement, un coffre, une progression de battle pass, ou vérifie un reçu d'achat.
 
 ## §114. Design system & tokens
 
@@ -1767,15 +1746,15 @@ Reanimated 3 (UI courantes), Skia (auras, particules, cadres animés), Lottie (l
 
 ## §116. Performance targets
 
-Cold start < 2.5s, tap → feedback < 100ms, 60 FPS sur iPhone 12 / Pixel 6+, API p95 < 300ms, sync queue vidée < 2s sur 4G.
+Cold start < 2.5s, tap → feedback < 100ms, 60 FPS sur iPhone 12 / Pixel 6+, Edge Function p95 < 300ms, sync queue vidée < 2s sur 4G.
 
 ## §117. CI/CD
 
-Push → Lint + Typecheck + Tests unitaires → Build (backend + mobile) → Deploy backend staging → EAS Build mobile (TestFlight/Internal) → E2E (Maestro/Detox) → [Manual approval] → Deploy prod.
+Push → Lint + Typecheck + Tests unitaires (`game-engine` en particulier) → `supabase db push` / `apply_migration` vers staging → `supabase functions deploy` → EAS Build mobile (TestFlight/Internal) → E2E (Maestro) → [Manual approval] → Deploy prod (migrations + functions) + EAS submit.
 
 ## §118. Environnements
 
-local, development (branche `develop`), staging (préprod, données synthétiques), production. Secrets via Doppler ou équivalent.
+local (Supabase CLI en local), staging (projet Supabase staging, données synthétiques), production (projet Supabase prod). Secrets Edge Functions via `supabase secrets set`, secrets mobile via EAS.
 
 ---
 
@@ -1867,7 +1846,7 @@ Sentry (errors mobile+backend), PostHog (analytics+feature flags), Datadog/Grafa
 
 ## §134. Phase 0 — Foundation (semaines 1-4)
 
-Setup monorepo, CI/CD, design system + tokens, auth, DB schema initial, backend NestJS boilerplate.
+Setup monorepo, CI/CD, design system + tokens, auth, DB schema initial, premières Edge Functions Supabase.
 
 ## §135. Phase 1 — MVP core (semaines 5-14)
 
@@ -1889,7 +1868,7 @@ Livrable : lancement public.
 
 ## §138. Phase 4 — V2 (mois 10-18)
 
-AI Coach, intégrations santé complètes, companion web app, guilds publiques, événements en live, marketplace programmes coachs, custom cosmétiques premium (color picker complet, upload).
+AI Coach, intégrations santé complètes, guilds publiques, événements en live, marketplace programmes coachs, custom cosmétiques premium (color picker complet, upload). (Un companion web reste envisageable au-delà de V2 mais n'est plus planifié à ce stade — décision de Julien du 2026-08-28.)
 
 ## §139. Phase 5 — V3 (18+ mois)
 

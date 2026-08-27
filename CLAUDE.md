@@ -1,7 +1,7 @@
 # CLAUDE.md — Winter Arc Autonomous Development Protocol
 
 > **You are Claude Code, operating as the sole engineer on Winter Arc.**
-> This file is your source of truth for *how you work*. For *what to build*, the full spec is `docs/cahier-des-charges.md` (CDC v2.0) — read it before any architecture or product decision; this file only summarizes it operationally. Where the two disagree, the CDC wins and this file should be updated to match.
+> This file is your source of truth for *how you work*. For *what to build*, the full spec is `docs/cahier-des-charges.md` (CDC v2.1 — v2.0 as sent, amended 2026-08-28 to drop NestJS and the web companion) — read it before any architecture or product decision; this file only summarizes it operationally. Where the two disagree, the CDC wins and this file should be updated to match.
 > Read this file fully before every session. Every architectural choice, every design decision, every commit obeys what's written here. When in doubt, re-read this file. When still in doubt, pick the option that respects the vision most — never the safest generic choice.
 
 ---
@@ -66,28 +66,28 @@ Every session ends with:
 
 ## 3. Tech Stack (locked — do not renegotiate)
 
-> Superseded 2026-08-27 by CDC v2.0 §104. The client-only Supabase-direct architecture is replaced by a proper NestJS API — the mobile app now talks to `apps/api`, never to Postgres directly, except through Supabase Auth. This was an explicit instruction from Julien (the CDC itself), not an autonomous stack change.
+> Amended 2026-08-28 by Julien, directly: **no NestJS, no web companion.** Expo (iOS + Android) is the only app; Supabase (Postgres + Auth + Storage + Edge Functions + Realtime) is the entire backend, no separate API server. See CDC v2.0 §104-118 (updated in place, same date) for the full rationale.
 
 | Layer | Choice | Reason |
 |---|---|---|
-| Mobile | **Expo SDK 54 + React Native 0.79 + TypeScript strict** | Faceless dev = one codebase, both stores |
-| Nav | **Expo Router v4** (file-based) | Deep links matter for the RPG progression system |
+| Mobile | **Expo SDK 57 + React Native + TypeScript strict** | Faceless dev = one codebase, both stores. No web target. |
+| Nav | **Expo Router** (file-based) | Deep links matter for the RPG progression system |
 | State | **Zustand** (client) + **TanStack Query v5** (server) | No Redux ceremony; server state is separate |
-| Styling | **Nativewind v5** + **restyle-style tokens** in `packages/ui-primitives` | Utility classes, but tokens are the law |
+| Styling | **Nativewind** + **restyle-style tokens** in `packages/ui-primitives` | Utility classes, but tokens are the law |
 | Animation | **Reanimated 4** + **Skia** for cinematic FX | 60fps native, no JS-thread jank |
 | Sound | **expo-audio** + a curated pack in `assets/sfx/` | Sound is UX, not decoration |
-| Local storage | **MMKV** + custom offline sync queue (CDC §110) | Optimistic local writes, backend is source of truth |
-| Backend API | **NestJS 10+ + TypeScript strict** (`apps/api`) | Owns all game-state writes; mobile never computes official XP (CDC §127) |
-| ORM | **Prisma** against **PostgreSQL 15+ (Supabase)** | Typed schema shared with the API |
-| Auth | **Supabase Auth** | Magic link + Apple/Google, JWT bearer to the API |
-| Cache/Queues | **Redis** + **BullMQ** | Rate limiting, async jobs (achievement evaluation, chest rolls) |
-| Storage | **Supabase Storage** (→ Cloudflare R2 later if volume demands it) | Avatars, banners, journal photos |
-| Realtime | **Socket.io** (V1, not MVP-blocking) | Squad feed, live leaderboard movement |
-| Payments | **Apple IAP + Google Play Billing** (mobile), **Stripe** (web, V2) | Embers packs, Premium subscription, Battle Pass |
+| Local storage | **MMKV** + custom offline sync queue (CDC §110) | Optimistic local writes; the Edge Function that writes is source of truth |
+| Backend | **Supabase only** — Postgres 15+, schema in raw SQL (`supabase/migrations/`) | No app server to run or deploy |
+| Game-state writes | **Supabase Edge Functions** (Deno) — see CDC §107 for the function list | Mobile never computes official XP (CDC §127); RLS blocks direct client writes to those tables, only the service role (used by these functions) can write |
+| Auth | **Supabase Auth** | Magic link + Apple/Google, mobile talks to it directly |
+| Storage | **Supabase Storage** | Avatars, banners, journal photos |
+| Realtime | **Supabase Realtime** (Postgres changes / broadcast) | Squad feed, live leaderboard movement — no Socket.io |
+| Scheduled jobs | **pg_cron** + scheduled Edge Functions | Quest rotation, Grace Period cutoff, daily reset — no BullMQ/Redis |
+| Payments | **Apple IAP + Google Play Billing** only | No web checkout — no Stripe |
 | Analytics | **PostHog** | Product analytics, feature flags |
-| Monitoring | **Sentry** (errors) + **Datadog/Grafana** (infra metrics) | |
-| Monorepo | **Turborepo + pnpm workspaces** | `apps/{mobile,api,admin,web}`, `packages/{shared-types,shared-utils,ui-primitives,game-engine}` |
-| Testing | **Vitest** (unit, mobile+packages) + **Jest** (NestJS default) + **React Native Testing Library** + **Maestro** (E2E flows) | Fast unit, real E2E |
+| Monitoring | **Sentry** (mobile + Edge Functions) | No separate infra fleet to run Datadog/Grafana against |
+| Monorepo | **Turborepo + pnpm workspaces** | `apps/mobile` only, `packages/{shared-types,shared-utils,ui-primitives,game-engine}` |
+| Testing | **Vitest** (unit, mobile+packages+Edge Functions) + **React Native Testing Library** + **Maestro** (E2E flows) | Fast unit, real E2E |
 | Lint/Format | **Biome** (not ESLint + Prettier) | Single tool, 10x faster, one config |
 | CI | **GitHub Actions** | Runs on push, blocks merge if red |
 
@@ -97,7 +97,7 @@ Deviating from this table requires a `DECISION-NEEDED` entry, not an autonomous 
 
 ## 4. Repo Layout
 
-> Superseded 2026-08-27 by CDC v2.0 §105-107 — an `apps/api` (NestJS) and `apps/admin` (Next.js back-office) are added; `packages/domain` becomes `packages/game-engine` (shared between the API and offline-optimistic mobile calculations) and gains `shared-types`/`shared-utils` siblings.
+> Amended 2026-08-28 — `apps/api`, `apps/admin`, `apps/web` are dropped. `apps/mobile` is the only app. The "backend" is `supabase/functions/` (Edge Functions), not a package under `apps/`.
 
 ```
 winter-arc/
@@ -109,25 +109,22 @@ winter-arc/
 │   └── prompts/
 │       └── nightly-session.md   ← the prompt the cron uses to invoke you
 ├── apps/
-│   ├── mobile/                  ← Expo app
-│   ├── api/                     ← NestJS backend (source of truth for XP/game state)
-│   ├── admin/                   ← Next.js back-office (V1+)
-│   └── web/                     ← companion web app (V2, not before)
+│   └── mobile/                  ← Expo app (iOS + Android). The only app.
 ├── packages/
-│   ├── ui-primitives/           ← tokens, primitives, motion presets (was design-system)
-│   ├── game-engine/             ← XP math, prestige logic, achievement eval, streaks (pure TS, was domain)
-│   ├── shared-types/            ← DTOs / types shared mobile ↔ api
+│   ├── ui-primitives/           ← tokens, primitives, motion presets
+│   ├── game-engine/             ← XP math, prestige logic, achievement eval, streaks (pure TS)
+│   ├── shared-types/            ← types shared mobile ↔ Edge Function payloads
 │   └── shared-utils/            ← formatters, date helpers, etc.
 ├── supabase/
 │   ├── migrations/              ← timestamped SQL, rollback for every up
-│   ├── functions/               ← Deno edge functions
+│   ├── functions/               ← Deno Edge Functions — this IS the backend (CDC §107)
 │   └── seed/                    ← demo data for local dev
 ├── scripts/
 │   ├── nightly-claude.sh        ← the launcher (WSL2)
 │   ├── nightly-claude.ps1       ← Windows Task Scheduler wrapper
 │   └── notify.sh                ← Telegram push
 └── docs/
-    ├── cahier-des-charges.md    ← CDC v2.0, full product spec — read before big decisions
+    ├── cahier-des-charges.md    ← CDC v2.1, full product spec — read before big decisions
     └── decisions/               ← ADRs, one file per decision
 ```
 
