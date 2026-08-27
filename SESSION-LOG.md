@@ -5,6 +5,41 @@
 
 ---
 
+## Session 2026-08-28 (ad-hoc, continuation — triggered directly by Julien)
+
+### Done
+- **Architecture pivot** (Julien's explicit instruction): removed NestJS and the web companion from the CDC, CLAUDE.md, and TODO.md. Supabase (Postgres + Auth + Storage + Edge Functions + Realtime) is now the entire backend; Expo (iOS + Android) is the only client. Deleted the NestJS scaffold generated earlier the same night before it was ever committed.
+- **Supabase workflow changed**: per Julien, Claude writes `.sql` migrations and Deno Edge Functions and stops — Julien applies/deploys them himself. Not blocked on Supabase project access anymore (yesterday's blocker is moot under this workflow).
+- feat(mobile): bootstrapped `apps/mobile` via `create-expo-app` (SDK 57), rebranded (name/scheme/bundle id/splash/dark-lock), stripped the template's own redundant `AGENTS.md`/`CLAUDE.md`/`.claude/`.
+- feat(game-engine): XP curve (CDC §20), multiplier stack (§19), streak lifecycle (§40-43), prestige (§23-24), class synergy (§29-30). 37 Vitest cases, all green, `tsc --noEmit` clean.
+- feat(ui-primitives): tokens.ts (Frost palette + spacing/radii/type/motion from CLAUDE.md §5) + Surface/Hairline/Text primitives.
+- feat(functions): scaffolded `supabase/functions/` — `_shared/` helpers + `award-habit-xp`, the function the whole MVP loop depends on. Written, not deployed.
+- Fixed `tsconfig.base.json` (needed `baseUrl` for the `paths` map to be valid — TS5090) and cleaned up all Biome lint errors across the new code + the Expo template's own files (`biome check --write`, then a few manual non-null-assertion fixes).
+- Root `pnpm install` succeeded; `packages/game-engine` and `packages/ui-primitives` both typecheck clean.
+
+### Blockers
+
+- 🚧 **`.claude/skills/` still missing** — unchanged from yesterday, still needs Julien's input (has originals, or wants them drafted from the CDC).
+- 🚧 **`apps/mobile` doesn't fully typecheck yet** — two errors from the Expo template's own CSS-module usage (`animated-icon.web.tsx`, `theme.ts` → `global.css`), missing type declarations that are normally generated on first `expo start`/`prebuild`, which hasn't been run yet. Not a regression from tonight's work — pre-existing template state.
+
+### Decisions needed from Julien
+
+- Same two as 2026-08-27 (Supabase project limit is now moot given the new workflow — dropping that one; `.claude/skills/` origin is still open).
+- **New**: `packages/game-engine/src/achievements.ts` was deliberately not written — the CDC gives achievements a `condition: JSON` field but never specifies its shape. Needs either the originals (if they exist) or a first concrete batch of achievement conditions to design the evaluator against.
+
+### Metrics
+- Commits: 5 (docs pivot, mobile bootstrap, game-engine, ui-primitives, edge functions)
+- Tests: 37/37 green
+- Files touched: ~90 (mostly Expo template scaffold)
+
+### Next session should
+- Wire `packages/game-engine` and `packages/ui-primitives` into an actual mobile screen (currently unconsumed — the packages exist but nothing imports them yet).
+- Run `expo start` once to generate the missing `expo-env.d.ts`/CSS type declarations and get `apps/mobile` to a clean `tsc --noEmit`.
+- Re-skin the default tab template into the real onboarding/dashboard screens (CDC §9, §14), or at minimum the Écran 1 splash, since that's the first thing anyone will see.
+- Write the `classes` + starter `cosmetics`/`achievements` seed `.sql` (TODO.md Phase 0) so the schema Julien applies isn't empty tables.
+
+---
+
 ## Session 2026-08-27 (ad-hoc, not the 02:30 cron — triggered directly by Julien)
 
 ### Done
