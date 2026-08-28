@@ -181,9 +181,16 @@ CDC §128. Aucune policy RLS → inaccessible aux clients, y compris en lecture.
 
 ---
 
+## Tables ajoutées le 2026-08-28 (migrations séparées, hors le schéma initial ci-dessus)
+
+- **`active_boosts`** (`20260828010000`) — XP Elixir/Feast actifs (CDC §25). `award-habit-xp` ne la requête pas encore (gap toujours ouvert, voir son header), mais la table existe désormais.
+- **`user_skills`** (`20260828010100`) — allocation de Skill Points, PK composite `(user_id, skill_id)`, unlock à plat (pas de rangs). `skill_id` validé côté code (`game-engine/skills.ts`'s `SKILL_IDS`), pas par contrainte DB — même raisonnement que `achievements.condition` vs `packages/game-engine`.
+- **`idempotency_keys`** — `unique(user_id, endpoint, key)`, aucun accès client (comme `audit_logs`). Alimentée par `_shared/idempotency.ts`.
+- **`profiles.lifetime_xp`** (`20260828010300`, colonne ajoutée à `profiles`, pas une nouvelle table) — trouvé en implémentant `apply-prestige` : `total_xp` seul ne pouvait pas survivre à un reset de niveau sans se désynchroniser de `level`. `total_xp` = XP depuis le dernier Prestige (ce que lit le leveling) ; `lifetime_xp` = jamais reset (CDC §23-24).
+
 ## Ce qui manque volontairement (pas un oubli)
 
-- **Sub-stats** (CDC §27, V1.5) — pas de table dédiée, les 7 stats principales ne sont même pas encore matérialisées en table (elles se dérivent de `habits.linked_stats` × `habit_logs`, calcul côté Edge Function à écrire).
-- **Active boosts** (XP Elixir/Feast, CDC §25) — pas de table ; `award-habit-xp` passe `hasXpElixir`/`hasXpFeast` en `false` en dur, voir le header du fichier.
-- **Fragments Forge** (CDC §76) — `user_currency.fragments` existe mais aucune Edge Function de craft.
+- **Sub-stats** (CDC §27, V1.5) — pas de table dédiée. Les 7 stats principales ont désormais un calcul (`game-engine/stats.ts`, 2026-08-28) mais toujours pas de table — calcul à la volée côté client à partir de `habits.linked_stats` × `habit_logs`, pas un problème d'intégrité anti-triche (voir le header du module).
+- **Fragments Forge** (CDC §76) — `user_currency.fragments` existe et `open-chest` y écrit désormais (2026-08-28), mais aucune Edge Function de craft (dépenser des Fragments pour un item choisi).
 - **Referral** (CDC §97), **Guilds** (V2), **Sound Pack / Notification Style cosmetics** (V2 extensions du §49) — non modélisés, phases ultérieures.
+- **Achats permanents non-cosmétiques** (Recovery Day, slot d'habitude, respec de compétence — CDC §72) — aucune table/colonne ; `shop-purchase` (2026-08-28) est donc scopé aux cosmétiques seulement.

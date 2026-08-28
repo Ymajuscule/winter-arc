@@ -49,41 +49,43 @@ Authorization: Bearer <user JWT>
 | 409 | Déjà loggée pour ce `loggedFor` (contrainte `unique(habit_id, logged_for)`) |
 | 500 | Échec d'écriture `habit_logs` |
 
-**Gaps connus** (documentés dans le header du fichier, pas cachés) : `isPerfectDay`, boosts XP actifs, événements de saison sont forcés à `false` faute de la donnée sous-jacente ; `isEarlyBird` utilise l'heure UTC en attendant un fuseau horaire par utilisateur ; le seuil de streak est en dur à 60 au lieu de dépendre de la difficulté de l'Arc.
+**Gaps connus** (documentés dans le header du fichier, pas cachés) : `isPerfectDay`, boosts XP actifs (la table `active_boosts` existe désormais mais n'est pas encore requêtée ici), événements de saison sont forcés à `false` faute de la donnée sous-jacente ; `isEarlyBird` utilise l'heure UTC en attendant un fuseau horaire par utilisateur. Le seuil de streak lit désormais `profiles.difficulty` via `STREAK_THRESHOLD_BY_DIFFICULTY` (2026-08-28, n'est plus en dur).
+
+Depuis le 2026-08-28 : enveloppée dans `withIdempotency` (`Idempotency-Key` header optionnel) et appelle `evaluateAndUnlockAchievements` après l'écriture du streak — la réponse a un champ `achievements` en plus.
 
 ---
 
-## 🔲 Spécifiées, pas encore écrites
+## ✅ Implémentées (2026-08-28) — écrites, non déployées
 
 ### `claim-quest`
-CDC §33-36. Réclame une quête (daily/weekly/monthly/boss) dont la progression est complète.
+CDC §33-36. Réclame une quête (daily/weekly/monthly/boss) dont la progression est complète. Recalcule la progression côté serveur avant de payer (`_shared/quest-progress.ts`, jamais de confiance dans une prétention client).
 
 ```ts
 POST /functions/v1/claim-quest
 { "userQuestId": "uuid" }
 
 // 200
-{ "xpAwarded": number, "coinsAwarded": number, "cosmeticAwarded": string | null, "level": LevelProgress }
-// 409 si déjà réclamée ou progression < 100%
+{ "xpAwarded": number, "coinsAwarded": number, "cosmeticAwarded": string | null, "level": LevelProgress, "achievements": AchievementUnlockResult }
+// 409 si déjà réclamée ou progression < 100% (le body inclut alors "progress")
 // 404 si la quête n'existe pas ou n'appartient pas à l'utilisateur
 ```
-Dépend d'un moteur de progression de quête pas encore écrit (`quest_definitions.condition` n'a pas de DSL formalisé — contrairement à `achievements.condition`, voir gap dans TODO.md).
+Le moteur de progression existe (`game-engine/quests.ts` + `_shared/quest-progress.ts`). Ce qui manque encore : `rotate-quests` (le cron qui *assigne* des instances de quête aux utilisateurs chaque période) — `claim-quest` peut réclamer une quête déjà assignée, mais rien n'assigne encore automatiquement.
 
 ### `evaluate-achievements`
-CDC §44-48. Appelée en interne par les autres fonctions (pas directement par le mobile) après tout événement qui pourrait débloquer un achievement — complétion d'habitude, claim de quête, avancement de streak, prestige.
+CDC §44-48. **Décision** (2026-08-28, CLAUDE.md §8 catégorie 2) : implémentée comme helper partagé (`_shared/evaluate-achievements.ts`), pas comme fonction déployée séparément — deux déploiements Deno ne partagent pas de mémoire process, et un appel HTTP function-to-function pour ça serait plus lent sans bénéfice. Appelée directement par `award-habit-xp` et `claim-quest`.
 
 ```ts
-// Appel interne (function-to-function), pas de route publique
-evaluateNewlyUnlockedAchievements(allAchievements, alreadyUnlockedIds, ctx: AchievementEvalContext)
-// → string[] d'ids nouvellement débloqués, à insérer dans user_achievements
-// et dont le cosmetic_reward (si non-null) doit aussi rejoindre user_cosmetics
+evaluateAndUnlockAchievements(userId: string): Promise<AchievementUnlockResult>
+// → { newlyUnlockedIds, xpAwarded, coinsAwarded, cosmeticIdsGranted }
+// Insère user_achievements, crédite xp_reward/coins_reward, insère user_cosmetics
+// pour tout cosmetic_reward non-null.
 ```
-La logique pure existe déjà (`packages/game-engine/src/achievements.ts`) — il manque le code Edge Function qui construit `AchievementEvalContext` à partir des tables (requêtes d'agrégation sur `habit_logs`, `streaks`, `user_achievements`, etc.) et l'appelle.
+Plusieurs champs du contexte sont des gaps de schéma documentés (pas de table de tracking par "metric", pas de table encouragements/vainqueurs de challenge) — voir le header du fichier pour la liste complète et pourquoi chacun est à une valeur par défaut qui ne peut jamais déclencher un faux déblocage.
 
 ### `advance-streak`
-CDC §40-43. Job planifié (pg_cron), pas un appel client — clôture la journée pour tous les utilisateurs après la Grace Period (00:00-03:00, CDC §42), appelle `advanceStreak()` (`game-engine/streaks.ts`) par utilisateur actif, écrit les milestones (CDC §41) atteints comme `xp_transactions` + `user_achievements` s'il y a un achievement correspondant.
+CDC §40-43. Job planifié (pg_cron), pas un appel client — clôture la journée pour les utilisateurs qui n'ont pas ouvert l'app du tout, après la Grace Period (00:00-03:00, CDC §42). Auth par secret partagé (`CRON_SECRET` + header `X-Cron-Secret`), pas de JWT utilisateur. Écrit les milestones (CDC §41) atteints comme `xp_transactions`.
 
-Distinct de la mise à jour de streak qui se produit *dans* `award-habit-xp` au moment de la complétion — celle-ci gère le cas où l'utilisateur n'ouvre pas l'app du tout un jour donné.
+Distinct de la mise à jour de streak qui se produit *dans* `award-habit-xp` au moment de la complétion. **Reste à faire côté Supabase (pas un fichier)** : Julien configure le secret `CRON_SECRET` et le job pg_cron lui-même.
 
 ### `apply-prestige`
 CDC §23-24.
@@ -95,13 +97,13 @@ POST /functions/v1/apply-prestige
 { "prestigeRank": number, "lifetimeXp": number, "isLegend": boolean }
 // 409 si canPrestige() (game-engine/prestige.ts) est false
 ```
-Doit aussi : reset `profiles.level` à 1, débloquer le cadre/titre de Prestige correspondant dans `user_cosmetics`, journaliser dans `audit_logs` (action sensible, CDC §128).
+Reset `profiles.level` à 1, journalise dans `audit_logs` (action sensible, CDC §128). A nécessité une vraie correction de schéma trouvée en l'implémentant : `profiles.lifetime_xp` (migration `20260828010300`) — voir le header du fichier et SESSION-LOG.md pour le détail. **Portée volontairement limitée** : le "choix de bonus permanent au moment du Prestige" (CDC §23) n'est pas géré — aucun payload/catalogue de bonus prestige n'existe encore pour ça.
 
 ### `spend-skill-point`
-CDC §22. Non spécifié plus finement : l'arbre de talents à 4 branches (Body/Mind/Spirit/Fortune) n'a pas encore de représentation en base — `profiles.skill_points` compte les points disponibles mais rien ne modélise où ils sont alloués. À concevoir avant d'écrire cette fonction (probablement une table `user_skills` — pas encore dans le schéma, gap ouvert).
+CDC §22. Catalogue de talents désormais réel (`game-engine/skills.ts`, 16 nœuds, 4 branches) et table `user_skills` (migration `20260828010100`) — mais la fonction elle-même (allocation + respec payant/gratuit par saison) n'est pas encore écrite.
 
 ### `open-chest`
-CDC §74. Roll pondéré par rareté selon `chests.type`, anti-doublon → conversion en Fragments (`user_currency.fragments`, CDC §76) si l'item est déjà possédé.
+CDC §74. Roll pondéré par rareté (`game-engine/chests.ts`, `rollChestRarities`), anti-doublon → conversion en Fragments (`user_currency.fragments`, CDC §76) si l'item est déjà possédé.
 ```ts
 POST /functions/v1/open-chest
 { "chestId": "uuid" }
@@ -110,10 +112,14 @@ POST /functions/v1/open-chest
 { "items": Array<{ cosmeticId: string, isDuplicate: boolean, fragmentsAwarded?: number }> }
 // 409 si déjà ouvert
 ```
-Table de probabilités par rareté/type de coffre pas encore définie (CDC §74 donne les raretés possibles par coffre, pas les pourcentages exacts) — à trancher avant l'implémentation, candidat `DECISION-NEEDED` si Julien a une préférence précise, sinon valeurs raisonnables à documenter dans le code.
+Les pourcentages exacts par rareté/type de coffre ont été tranchés directement (2026-08-28) plutôt qu'escaladés — voir `game-engine/chests.ts` pour les valeurs et leur justification, faciles à retoucher plus tard.
 
 ### `shop-purchase`
-CDC §72-73. Débite `coins`/`embers`, crédite `user_cosmetics` ou l'item permanent acheté (Recovery Day, slot d'habitude...).
+CDC §72-73. **Portée limitée aux cosmétiques** (le cas entièrement modélisé) : débite `coins`/`embers`, crédite `user_cosmetics`. Les achats permanents non-cosmétiques du CDC §72 (Recovery Day, slot d'habitude, respec de compétence) n'ont aucune table/colonne dédiée dans le schéma — `DECISION-NEEDED` sur où ça vivrait (compteur sur `profiles` ? table générique `permanent_purchases` ?) avant de pouvoir les implémenter.
+
+---
+
+## 🔲 Spécifiées, pas encore écrites
 
 ### `battle-pass-claim-tier`
 CDC §101. V1 — pas avant que `battle_passes`/`seasons` aient du contenu réel.
@@ -125,7 +131,7 @@ CDC §80. V1.
 CDC §33-35. Génère les `user_quests` du jour/de la semaine/du mois à partir de `quest_definitions`, personnalisées par habitudes actives/classe/stats sous-alimentées (CDC §33) — logique de sélection non triviale, pas encore conçue.
 
 ### `grace-period-cutoff` (pg_cron)
-CDC §42. Déclenche `advance-streak` pour les utilisateurs qui n'ont pas loggé avant la fin de la Grace Period.
+CDC §42. **Superseded (2026-08-28)** — `advance-streak` (implémentée, voir plus haut) fait déjà ce travail directement : elle boucle sur tous les streaks globaux et ne traite que ceux pas encore avancés "aujourd'hui", ce qui *est* le filtre Grace Period. Pas de fonction séparée à écrire pour ça.
 
 ### `verify-iap-receipt`
 CDC §122. Vérifie un reçu Apple/Google, active Premium ou le Battle Pass premium. Phase 2 — pas avant que le modèle d'abonnement (CDC §120) ait une table dédiée.
@@ -147,4 +153,4 @@ Schéma libre (jsonb, pas de DSL strict comme `AchievementCondition`) car les co
 | `boss_defeated` | `{"type":"boss_defeated","scope":"arc"}` | Boss vaincu |
 | `arc_completed` | `{"type":"arc_completed","minCompletionPct":90}` | Arc terminé au-dessus d'un seuil |
 
-Ce n'est **pas** une contrainte de clé étrangère — `achievementId` n'est pas vérifié par Postgres, c'est une métadonnée d'affichage ("comment débloquer") consommée côté client pour l'écran Cosmetics (CDC §62). L'unlock réel se produit dans les Edge Functions correspondantes (`award-habit-xp` écrit dans `user_cosmetics` quand un niveau/streak franchit un seuil qui a un cosmétique associé — logique pas encore écrite, gap ouvert au même titre que `evaluate-achievements`).
+Ce n'est **pas** une contrainte de clé étrangère — `achievementId` n'est pas vérifié par Postgres, c'est une métadonnée d'affichage ("comment débloquer") consommée côté client pour l'écran Cosmetics (CDC §62). L'unlock via `achievement` fonctionne désormais (`evaluate-achievements`, 2026-08-28). L'unlock via `level`/`streak` directement (pas d'achievement intermédiaire — ex. `frame-obsidian` au niveau 100) reste un gap ouvert : `award-habit-xp` met à jour le niveau/streak mais ne consulte pas encore `cosmetics.unlock_method` pour accorder automatiquement ce qui vient de devenir atteignable.

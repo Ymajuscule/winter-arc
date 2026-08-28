@@ -32,6 +32,12 @@ _(none open right now — the two standing ones from 2026-08-27/28 are resolved:
 
 - [x] **`packages/game-engine`** — xp/multipliers/streaks/prestige/classes, full Vitest suite. *(2026-08-28)*
   - [x] `achievements.ts` — condition evaluator DSL, decided directly per Julien's "débrouille-toi" (2026-08-28). 30-achievement seed catalog built against it (`supabase/seed/003_achievements.sql`).
+  - [x] `quests.ts` — quest_definitions.condition progress DSL (0-100, not boolean — quests are period-tracked). *(2026-08-28)*
+  - [x] `stats.ts` — 7-stat computation from `habits.linked_stats` × `habit_logs`, saturating curve + 14-day decay rule (CDC §26). *(2026-08-28)*
+  - [x] `skills.ts` — 16-node Skill Point talent tree catalog (CDC §22), pairs with `user_skills` table. *(2026-08-28)*
+  - [x] `chests.ts` — chest rarity rolls + Fragment values (CDC §74, §76), rarity odds decided directly (flagged as open in api-specifications.md). *(2026-08-28)*
+  - [x] `STREAK_THRESHOLD_BY_DIFFICULTY` added to `streaks.ts` — closes the "hard-coded 60" TODO that lived in `award-habit-xp`'s own file header. *(2026-08-28)*
+  - 71/71 tests green, 100% behavioral coverage maintained per the rpg-mechanics skill.
 - [x] **`packages/ui-primitives`** — tokens.ts (Frost palette, spacing, radii, type, motion) + `Surface`/`Hairline`/`Text`. *(2026-08-28)*
   - [ ] `XPOrb`, `Frame`, `Aura`, `StreakFlame`, `XPBar`, `LevelBadge`, `Nameplate`, `Emblem`, `Sigil` — not built yet, see `docs/design-system.md §6` for the full list and CDC section refs.
   - [ ] Load the actual font files (JetBrains Mono, the display face, Inter) via `expo-font` in `apps/mobile` — `Text.tsx` references family names that don't resolve to anything loaded yet. Design Law violation until this lands.
@@ -43,14 +49,17 @@ _(none open right now — the two standing ones from 2026-08-27/28 are resolved:
 - [x] **Core schema — `.sql` migration** — 25 tables, RLS, rollback file. *(2026-08-27, unapplied — Julien applies it)*
 - [x] **Seed data — `.sql`** — 7 classes, 12 avatars, 8 frames, 6 auras, 6 banners, 5 themes, 20 titles, 30 achievements. *(2026-08-28, `supabase/seed/001-003`, unapplied)*
 - [x] **First Edge Function: `award-habit-xp`** — the MVP loop's core write path. *(2026-08-28, written, not deployed)*
-- [ ] **`evaluate-achievements`** — the pure logic exists (`game-engine/achievements.ts`) but nothing builds the `AchievementEvalContext` from the DB yet or calls it after `award-habit-xp`/streak updates. See `docs/api-specifications.md` for the contract. This is the next highest-value Edge Function — achievements can't actually unlock without it.
-- [ ] **`claim-quest`, `advance-streak` (cron), `apply-prestige`, `open-chest`, `shop-purchase`** — specified in `docs/api-specifications.md`, not written. Roughly Phase 1→2 order of need.
+- [x] **`evaluate-achievements`** — built as a shared helper (`_shared/evaluate-achievements.ts`), called internally by `award-habit-xp`/`claim-quest` rather than deployed as its own function (api-specifications.md says it's function-internal, not a public route — see the helper's file header for the reasoning). Several context fields are documented gaps defaulted to "never falsely unlocks" (no metric-tracking table, no encouragements/challenge-winner tables yet). *(2026-08-28, written, not deployed)*
+- [x] **`claim-quest`, `apply-prestige`, `open-chest`, `shop-purchase`, `advance-streak` (pg_cron)** — all written. *(2026-08-28, written, not deployed)*
+  - `shop-purchase` is scoped to cosmetics only — CDC §72's non-cosmetic permanent purchases (Recovery Day, habit slot, skill respec) have no backing schema yet, DECISION-NEEDED on where that lives.
+  - `advance-streak` needs Julien to set a `CRON_SECRET` Edge Function secret and configure the actual pg_cron schedule — Supabase-side config, not a file.
+  - Found and fixed a real gap while building `apply-prestige`: added `profiles.lifetime_xp` (migration `20260828010300`) since the schema only had one `total_xp` column doing double duty as both "cumulative" and "what leveling reads" — prestige couldn't reset level without it disagreeing with total_xp on the very next XP grant.
+- [x] **Idempotency on mutating Edge Functions** — `_shared/idempotency.ts`, wired into every function above via an optional `Idempotency-Key` header. Only caches success (<300) so a failed attempt can still retry. *(2026-08-28)*
 - [ ] **Auth flow** — Supabase Auth, magic link + Apple/Google. One screen per `docs/wireframes.md` Écran 5's sibling (sign-in, not covered in the onboarding wireframes yet — add it).
-- [ ] **`quest_definitions.condition` DSL** — unlike `achievements.condition`, this doesn't have a designed shape yet (see `docs/schema-postgresql.md`'s `quest_definitions` note). Needed before `claim-quest` or quest rotation can be written.
-- [ ] **Active-boosts table** (XP Elixir/Feast, CDC §25) — doesn't exist; `award-habit-xp` hard-codes `hasXpElixir`/`hasXpFeast` to `false`. Needed for the multiplier stack to be complete.
-- [ ] **`user_skills` table** (Skill Point allocation, CDC §22) — `profiles.skill_points` counts available points but nothing models the 4-branch talent tree allocation. Needed before `spend-skill-point` can be designed, let alone written.
-- [ ] **Idempotency keys on mutating Edge Functions** — `docs/architecture-technique.md §3` flags this; needed before the mobile sync queue is real (a retried network call shouldn't double-award XP).
-- [ ] **`supabase init`** — no local Supabase dev stack yet. Worth doing before the next batch of Edge Functions, to actually run them instead of only reading them for correctness.
+- [x] **`quest_definitions.condition` DSL** — `game-engine/quests.ts`, evaluates to 0-100 progress (not boolean, quests are period-tracked). `_shared/quest-progress.ts` builds the context from `habit_logs`. *(2026-08-28)*
+- [x] **Active-boosts table** (XP Elixir/Feast, CDC §25) — `active_boosts` table exists (migration `20260828010000`). `award-habit-xp` still hard-codes `hasXpElixir`/`hasXpFeast` to `false` — the table exists but isn't queried yet, next pass.
+- [x] **`user_skills` table** (Skill Point allocation, CDC §22) — migration `20260828010100`, pairs with `game-engine/skills.ts`'s 16-node catalog. `spend-skill-point` Edge Function itself still not written.
+- [ ] **`supabase init`** — no local Supabase dev stack yet. Deno CLI installed this session (used to `deno check` every new Edge Function against an isolated sandbox — see SESSION-LOG) but that's not the same as a running local Postgres to test SQL against.
 
 ---
 
@@ -64,12 +73,12 @@ Goal: usable solo, full loop Arc → habits → XP → level → achievement. Sh
 - [ ] Dashboard — header, today hero, habit list, daily quests, weekly progress, boss card
 - [ ] XP + Levels up to 50, level-up modal
 - [ ] Streaks + Streak Freeze + Recovery Day + Comeback experience (wireframed)
-- [ ] 30 achievements — catalog seeded (`supabase/seed/003`), `evaluate-achievements` Edge Function still needed to actually unlock them
-- [ ] Basic stats — 7-stat radar chart. Note: no table/computation exists yet — stats derive from `habits.linked_stats` × `habit_logs`, not yet implemented anywhere (`docs/schema-postgresql.md`)
+- [ ] 30 achievements — catalog seeded (`supabase/seed/003`), `evaluate-achievements` now written and wired into `award-habit-xp`/`claim-quest` (2026-08-28) — unlocking itself works, no UI to *display* an unlock yet (achievement toast/full-screen overlay, CDC §46, not built)
+- [ ] Basic stats — 7-stat radar chart. Computation now exists (`game-engine/stats.ts`, 2026-08-28) and runs client-side (not an anti-cheat concern like XP, see the module's header) — no UI/chart built yet
 - [ ] Notifications — habit reminders, streak alerts, level up, achievement unlocked
 - [ ] Cosmetics essentials — catalog seeded (`supabase/seed/002`), profile editor UI + equip flow not built
 - [ ] Coins (Embers deferred to Phase 2)
-- [ ] 3 daily quests + 3 weekly quests — blocked on the quest condition DSL above
+- [ ] 3 daily quests + 3 weekly quests — condition DSL + `claim-quest` now written (2026-08-28); `rotate-quests` (the cron that actually *assigns* quest instances to users each period, CDC §33's personalization heuristic) is still unwritten — quests can be claimed once assigned, but nothing assigns them yet
 - [ ] 1 monthly boss
 - [ ] End-of-day recap (wireframed)
 
@@ -78,14 +87,14 @@ Goal: usable solo, full loop Arc → habits → XP → level → achievement. Sh
 - [ ] Squads — create/join, squad feed, squad leaderboard via Supabase Realtime
 - [ ] Global challenges
 - [ ] Achievements extended to 100+, cosmetics extended to 100+
-- [ ] Shop, Chests (Wooden/Iron/Silver) — `open-chest`/`shop-purchase` specified, not written
+- [ ] Shop, Chests (Wooden/Iron/Silver) — `open-chest`/`shop-purchase` now written (2026-08-28); shop UI + chest-opening ceremony (CDC §74) not built
 - [ ] Custom Quests
 - [ ] Journal + Mood tracking
 - [ ] Advanced analytics + Insights engine
 - [ ] Widgets iOS/Android
 - [ ] Social share cards
 - [ ] Referral system
-- [ ] Prestige I-III, Skill Points + talent trees — blocked on `user_skills` table design above
+- [ ] Prestige I-III, Skill Points + talent trees — `apply-prestige` written and `user_skills`/`skills.ts` catalog exist (2026-08-28); `spend-skill-point` Edge Function and both UIs still not built
 - [ ] Premium subscription, Embers currency
 - [ ] Battle Pass Season 1
 
@@ -112,6 +121,7 @@ Goal: usable solo, full loop Arc → habits → XP → level → achievement. Sh
 
 ## ✅ Recently Shipped
 
+- **2026-08-28** — Julien asked directly to "intègre tout ce qui manque" — this pass closed nearly every open Phase 0 backend gap: `game-engine` gained `quests.ts`, `stats.ts`, `skills.ts`, `chests.ts` (4 new modules, 71/71 tests green); 4 new migrations (`active_boosts`, `user_skills`, `idempotency_keys`, `profiles.lifetime_xp`); 6 new/updated Edge Functions (`evaluate-achievements` as a shared helper, `claim-quest`, `apply-prestige`, `open-chest`, `shop-purchase`, `advance-streak`) plus idempotency wired into all of them. Also fixed `apps/mobile`'s `lint` script (was still `expo lint`, contradicting CLAUDE.md §3's Biome-only rule) and a pre-existing `@ts-nocheck` placement bug in `award-habit-xp`. Installed the Deno CLI this session specifically to `deno check` every new/touched Edge Function (with `@ts-nocheck` stripped in an isolated sandbox copy, never the real repo) instead of shipping them unverified — caught one real bug this way (a dynamically-built `.select()` string defeating Supabase's type inference). See SESSION-LOG.md for the full writeup, including the `lifetime_xp` schema gap found while implementing `apply-prestige`.
 - **2026-08-28** — 5 CDC Annexe C companion docs written: `architecture-technique.md`, `schema-postgresql.md`, `api-specifications.md`, `design-system.md`, `wireframes.md`.
 - **2026-08-28** — 10 `.claude/skills/` files drafted from the CDC/CLAUDE.md (cinematic-ui, winter-arc-design-system, supabase-ops, rpg-mechanics, mobile-performance, test-then-ship, todo-manager, git-discipline, winter-arc-architect, session-report), resolving the standing blocker.
 - **2026-08-28** — `achievements.ts` condition DSL + 30-achievement / 20-title / 71-cosmetic seed catalog (`supabase/seed/`), decided directly rather than escalated.
