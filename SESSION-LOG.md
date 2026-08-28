@@ -5,6 +5,42 @@
 
 ---
 
+## Session 2026-08-28 (continuation 4, ad-hoc — triggered directly by Julien: "tu as désormais accès à la base de données, fais le setup de la bdd et finis le setup de l'app")
+
+### Done
+
+Julien linked the Supabase MCP connector. This session did what the standing "Claude writes, Julien applies" workflow had deferred:
+
+- **Created the Supabase project**: `winter-arc-staging`, org "Habits Tracker" (`jbnrisodvxvfuqlsogat`), region `eu-west-3`, project ref **`hexoluuqagxhplrgfsme`**. Confirmed $0/month (free tier) before creating, per the confirm_cost/get_cost flow.
+- **Applied all 5 migrations** in order: `init_core_schema` (25 tables + RLS), `active_boosts`, `user_skills`, `idempotency_keys`, `profile_lifetime_xp`. `list_tables` confirms 28 tables, RLS enabled on every one.
+- **Loaded all 3 seed files**: 7 classes, 57 cosmetics, 30 achievements (row counts verified by query). Applied via `execute_sql` (not `apply_migration` — these are data seeds, not schema).
+- **Deployed all 6 Edge Functions**, all `ACTIVE`: `award-habit-xp`, `claim-quest`, `apply-prestige`, `open-chest`, `shop-purchase` (all `verify_jwt: true`), `advance-streak` (`verify_jwt: false` — it authenticates via `X-Cron-Secret`, not a user JWT, so Supabase's own JWT gate would have rejected pg_cron's call before our code ever ran).
+  - **Real deployment gotcha, not present locally**: the repo's actual import paths (`../../../packages/game-engine/src/xp.ts` etc.) assume a monorepo layout. The `deploy_edge_function` tool bundles each function standalone — a `../../../` from `index.ts` walked *past* the bundle root and resolved to `file:///packages/...` (confirmed by the exact error), not into the bundle. Fix: repackaged each function's `files` array with a flattened `game-engine/*.ts` + `_shared/*.ts` layout and rewrote the import specifiers to match (`./game-engine/xp.ts`, `./_shared/cors.ts`) — purely a deployment-packaging concern, **the committed repo files are untouched**, still using the real monorepo-relative paths for local dev/`deno check`.
+- **Enabled `pg_cron` + `pg_net`**, scheduled `advance-streak-nightly` (`0 3 * * *`, matches CDC §42's Grace Period cutoff window) via `net.http_post` to the deployed function URL. The shared secret it sends as `X-Cron-Secret` is generated with `gen_random_bytes` and stored in `vault` (`vault.decrypted_secrets`), not hard-coded into the cron job body.
+- **Wrote real credentials into `apps/mobile/.env`** (gitignored, confirmed before writing) — `EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_ANON_KEY`, so `services/supabase.ts`'s client is no longer `null`.
+- Ran `get_advisors` (security) after the schema work: only the two expected `rls_enabled_no_policy` INFOs (`audit_logs`, `idempotency_keys` — both correct by design, no client access at all) plus one new WARN after enabling `pg_net`: it installs into the `public` schema and Postgres/pg_net doesn't support `ALTER EXTENSION ... SET SCHEMA` (confirmed by trying and getting `0A000`). This is a known, common Supabase limitation, not something wrong with this schema — accepted, not worth fighting further.
+
+### Decisions needed from Julien
+
+- **DECISION-NEEDED (action, not a design call)**: set the `CRON_SECRET` Edge Function secret to this exact value — not settable via the MCP tools available this session (no `set_secret`-equivalent):
+  ```
+  5bed7871e1363a42390a8be8e0a2fc088b8c6c96f87c73b4
+  ```
+  Via dashboard: Project Settings → Edge Functions → Secrets. Via CLI: `supabase secrets set CRON_SECRET=5bed7871e1363a42390a8be8e0a2fc088b8c6c96f87c73b4 --project-ref hexoluuqagxhplrgfsme`. Until this is set, `advance-streak`'s nightly cron call will get a 401 from the function itself (the cron job's side is already correctly configured and sending this same value).
+
+### Metrics
+- Migrations applied: 5. Seed rows: 7 + 57 + 30 = 94.
+- Edge Functions deployed: 6/6 ACTIVE.
+- Commits: 0 this leg — `apps/mobile/.env` is gitignored by design (real secrets stay out of git); TODO.md/SESSION-LOG.md updates land in the next commit.
+
+### Next session should
+- Confirm Julien set `CRON_SECRET`, then verify the cron actually fires (check `cron.job_run_details` after the next 03:00, or invoke `advance-streak` manually with the header to test sooner).
+- Write `services/api.ts` (typed Edge Function client) now that real credentials exist — currently the mobile app still only writes to the local `app-store` (see that store's file header), never calls `award-habit-xp` for real. This is the actual "wire mobile to backend" work; today's session made the backend reachable, not the mobile app reach it.
+- Wire `auth.tsx`'s "Send Link" button to `supabase.auth.signInWithOtp` — trivial now that the client is configured.
+- Still open from prior sessions: `rotate-quests`, `spend-skill-point`, `packages/shared-types`, visual/runtime verification of the mobile UI (path-length issue in this sandbox, see continuation 3's entry).
+
+---
+
 ## Session 2026-08-28 (continuation 3, ad-hoc — triggered directly by Julien: "à toi intègre tout ce qui manque !")
 
 ### Done
