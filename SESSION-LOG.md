@@ -5,6 +5,48 @@
 
 ---
 
+## Session 2026-08-28 (continuation 3, ad-hoc — triggered directly by Julien: "à toi intègre tout ce qui manque !")
+
+### Done
+
+**Backend (Phase 0 gap-closing):**
+- `packages/game-engine` gained 4 modules: `quests.ts` (the `quest_definitions.condition` DSL that TODO.md flagged as missing, evaluates to 0-100 progress not boolean — quests are period-tracked), `stats.ts` (7-stat computation from `habits.linked_stats` × `habit_logs`, saturating curve + 14-day decay per CDC §26), `skills.ts` (16-node Skill Point talent tree catalog, CDC §22), `chests.ts` (chest rarity rolls + Fragment values, CDC §74/§76, rarity odds decided directly since api-specifications.md flagged them as an open call). Also added `STREAK_THRESHOLD_BY_DIFFICULTY` to `streaks.ts`, closing a "hard-coded 60" TODO that had lived in `award-habit-xp`'s own file header since it was written. 71/71 tests green (was 43).
+- 4 new migrations: `active_boosts`, `user_skills`, `idempotency_keys`, and `profiles.lifetime_xp` — the last one because implementing `apply-prestige` surfaced a real bug-in-waiting: the schema only had one `total_xp` column serving as both "cumulative XP" and "what `levelFromTotalXp` reads," so resetting level to 1 on prestige without a second counter would have made the very next XP grant immediately relevel the user back up. Not a guess — traced through the actual write path before deciding.
+- 6 Edge Functions written: `evaluate-achievements` (as a shared helper called by other functions, not its own deployment — api-specifications.md's own words say "called internally"), `claim-quest`, `apply-prestige`, `open-chest`, `shop-purchase` (scoped to cosmetics only — CDC §72's non-cosmetic permanent purchases have no backing schema), `advance-streak` (pg_cron target, auth via a shared secret instead of a user JWT). `award-habit-xp` updated to call `evaluate-achievements`, wrapped in idempotency, and to read the streak threshold from `profiles.difficulty` instead of the hard-coded value.
+- `_shared/idempotency.ts` — every mutating function above now accepts an optional `Idempotency-Key` header and replays the cached response for a repeat, instead of double-writing.
+- **Installed the Deno CLI specifically to verify these** (`npm install -g deno`): every new/touched Edge Function was `deno check`'d — with `@ts-nocheck` stripped in a throwaway copy — against an isolated sandbox directory (never the real repo; a first attempt at `deno check` in-place mutated the root `package.json` by adding a `workspaces` field trying to read the pnpm workspace, immediately reverted). This caught one real bug: a dynamically-built `.select()` string in `evaluate-achievements.ts` defeated Supabase's column type inference.
+- `apps/mobile`'s `lint` script was still the `create-expo-app` default (`expo lint`, which shells out to install ESLint at runtime) — contradicted CLAUDE.md §3's Biome-only rule and was actively failing in this sandbox. Fixed to `biome check .`, added a `typecheck` script so `turbo run typecheck` actually covers `apps/mobile` (it was silently skipping it before).
+
+**Mobile (re-skinning the default Expo template into the real app):**
+- Deleted the entire `create-expo-app` demo scaffold (tabs, themed-text/view, animated-icon, hint-row, web-badge, collapsible) and its assets. This also removed the 2 pre-existing typecheck errors TODO.md had flagged (they lived in files that are now gone, not fixed around).
+- `packages/ui-primitives` gained the 9 components the `winter-arc-design-system` skill listed as missing (`XPOrb`, `Frame`, `Aura`, `StreakFlame`, `XPBar`, `LevelBadge`, `Nameplate`, `Emblem`, `Sigil`) plus 3 custom SVG icons (Flame/Check/Chevron — Design Law rule 3 forbids emoji as UI chrome). Frame/Aura are flat-color placeholders, not the Skia particle versions the CDC eventually wants — flagged in both files as needing `mobile-performance` coordination first, per the design-system skill's own note.
+- Loaded real fonts (3 `@expo-google-fonts` packages) via `expo-font`, closing the other standing Design Law violation. `Text.tsx`'s `display` variant now renders in the Inter Tight fallback, not Neue Haas Grotesk — no license file exists for that; the component's comment says exactly what to flip if Julien gets one.
+- Offline-first state: `zustandMmkvStorage` (one MMKV instance) backs `onboarding-store.ts` and `app-store.ts`. `app-store`'s `completeHabit` calls the same `game-engine` functions a real `award-habit-xp` call would (`calculateXpMultiplier`, `applyDailyXpCap`, `levelFromTotalXp`, `advanceStreak`) purely client-side, because no Supabase project is linked this session to reconcile against — the file header spells out exactly what changes once one exists.
+- Built the full 13-screen onboarding (CDC §9) behind one shared `OnboardingShell`, plus Dashboard (CDC §14), Day Recap (CDC §16), a Level Up overlay, and an Auth screen stub (`services/supabase.ts`'s client is `null` until env vars exist). Every scope cut (no video asset, no live palette retheming, Daily Quests/Weekly Progress/Boss omitted as honest empty states rather than faked data, "Best moment" dropped from Day Recap for lack of real timestamps) is commented at its source, not hidden.
+- `pnpm turbo run typecheck lint test` is green across all 3 packages (game-engine 71/71 tests, ui-primitives, apps/mobile).
+
+### Blockers
+
+- 🚧 **Could not get `expo start --web` running in this session's sandbox to visually verify the mobile UI.** Diagnosed at length, not given up on early: Metro fails resolving `@babel/types` -> `@babel/helper-validator-identifier` because pnpm creates that symlink with a mangled target (`/tmp/claude/...` instead of the real `C:\Users\...` path) — confirmed via `readlink`, reproduced across multiple full clean reinstalls, from both the Bash tool and PowerShell directly. `rmdir`/`Remove-Item` also silently fail to fully delete `node_modules` here. This smells like Windows MAX_PATH (260 char) friction compounding with this session's unusually deep scratchpad path, not a pnpm/repo config problem — `tsc`, `vitest`, and Biome all run clean because they don't walk the same symlink chain Metro's bundler does. Everything shipped tonight is typecheck+lint verified, matches the CDC/wireframes on a careful read-through, but is **not** confirmed to actually render/behave correctly on a device or in a browser.
+
+### Decisions needed from Julien
+
+_(none escalated — ambiguities were resolved directly and documented at their source per the standing "débrouille-toi" instruction, same as prior sessions. The one thing worth Julien's eyes specifically: `shop-purchase`'s scope (cosmetics only) and `apply-prestige`'s missing "choice of permanent bonus" both stem from real schema gaps, not oversights — see TODO.md's Phase 0 section for both.)_
+
+### Metrics
+- Commits: 31 (backend: game-engine modules/migrations/Edge Functions/docs sync; mobile: scaffold removal, fonts, stores, onboarding, dashboard, auth)
+- Tests: 71/71 green (game-engine), was 43 at session start
+- Files touched: ~90 (new + modified + deleted)
+
+### Next session should
+- **First**: open this repo on a normal-length path (or in Julien's own WSL2/Windows setup) and actually run `expo start` — click through onboarding end to end, confirm the dashboard renders, fix whatever a real Metro/simulator run surfaces that typecheck couldn't catch.
+- Write `rotate-quests` (quest assignment) so the Dashboard's Daily Quests zone has something real to show instead of its current honest empty state.
+- Wire `hasXpElixir`/`hasXpFeast` into `award-habit-xp` now that `active_boosts` exists as a table.
+- `packages/shared-types` (Edge Function payload/response types) — still not started; `services/api.ts` on the mobile side is blocked on it (would mean hand-typing every payload twice otherwise).
+- `spend-skill-point` Edge Function, now that `user_skills` + `game-engine/skills.ts` both exist.
+
+---
+
 ## Session 2026-08-28 (continuation 2, ad-hoc — triggered directly by Julien: "débrouille-toi, intègre le reste et écris le cahier des charges manquant")
 
 ### Done
