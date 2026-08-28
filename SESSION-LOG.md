@@ -5,6 +5,44 @@
 
 ---
 
+## Session 2026-08-28 (continuation 5, ad-hoc, same conversation as continuation 4 — Julien asked to actually wire the mobile app to the now-live backend rather than stop at "credentials configured")
+
+### Done
+
+- **Found and fixed the real missing piece**: nothing created a `profiles`/`user_currency`/`streaks` row for a new `auth.users` signup — every other Edge Function 404s on "Profile not found" without one. Wrote and deployed `bootstrap-profile` (idempotent per-table, grants the CDC §13 first reward directly: `title-awakened`, `frame-iron`, a new `day-zero` achievement added to both the live DB and `supabase/seed/003_achievements.sql`).
+- **Fixed a catalog mismatch found in the same pass**: `apps/mobile`'s placeholder `AVATARS` used made-up ids that didn't match any seeded `cosmetics` row — would have been a foreign-key violation the first time `bootstrap-profile` tried to set `profiles.avatar_id`. Realigned to the 12 real seeded `avatar-*` ids.
+- **Fixed a second real gap**: `award-habit-xp` never touched `user_currency` — Coins (CDC §70) would have silently stayed 0 forever through the real API. Added (easy/medium habit → +2, hard/extreme → +8), redeployed (v2, ACTIVE).
+- **`packages/shared-types`**: request/response types for all 6 mobile-facing functions (not `advance-streak`, pg_cron-only; not `evaluate-achievements`, a shared helper). Reuses `LevelProgress`/`AdvanceStreakOutcome`/`ClassId` from `game-engine` rather than redefining them.
+- **`apps/mobile/src/services/api.ts`**: typed client using `supabase.functions.invoke` (auth header automatic from the current session) with a fresh `Idempotency-Key` per call.
+- **`stores/session-store.ts`**: Zustand mirror of Supabase Auth session state, started once from `_layout.tsx`.
+- **`app/auth.tsx`**: real `signInWithOtp` call, replacing the old fake "sent" state.
+- **`stores/app-store.ts`**: split into demo mode (unchanged local-only path, CDC §13) and cloud-synced mode (`isCloudSynced`), selected by whether a session existed when onboarding finished. Cloud mode's `completeHabit` calls the real `award-habit-xp` and takes the server's numbers as authoritative; a failed call falls back to the same local-optimistic math demo mode uses (logged, not queued — see below).
+- **`onboarding/reward.tsx`**: ENTER calls `bootstrap-profile` first when signed in, seeds `app-store` from its response (real habit UUIDs), falls back to demo-mode init on any failure so a network hiccup can't strand Day Zero.
+- `pnpm turbo run typecheck lint test` green across all 4 packages after every change in this pass — including two real bugs `deno check` caught before deployment (see `bootstrap-profile`'s commit: two branches returned a raw object instead of a `Response`) and one `tsc` caught in `api.ts` (a generic constraint that doesn't structurally match named interfaces, fixed with a narrow cast instead).
+
+### Known gaps, explicitly not built this pass (scope calls, not oversights)
+
+- **Deep-link handling**: `emailRedirectTo: 'winterarc://auth/callback'` is set, but nothing in the app parses an incoming `winterarc://` URL to exchange it for a session yet. `session-store.ts` will pick up a session once one exists (e.g. if Supabase's SDK handles the exchange internally via `detectSessionInUrl`-equivalent on native — needs verifying), but the redirect URL itself isn't registered in the dashboard either (see Decisions below).
+- **No full CDC §110 offline sync queue** — the cloud-mode fallback on a failed `award-habit-xp` call is "apply the same local math, log a warning," not a persisted outbox with retry-on-reconnect. Real queue is a separate design (needs its own storage shape, retry policy, conflict resolution when the queued action's optimistic numbers disagree with what the server would have computed).
+- **`bootstrap-profile` doesn't create an `arcs` row** — Arc creation/lifecycle is still an open Phase 1 gap (TODO.md), habits get `arc_id: null` (schema-supported "persistent habit").
+
+### Decisions needed from Julien
+
+- **DECISION-NEEDED (action)**: register `winterarc://auth/callback` as a valid redirect URL — Supabase dashboard → Authentication → URL Configuration → Redirect URLs. Magic links won't reopen the app without this.
+- **DECISION-NEEDED (verification)**: confirm whether Supabase JS's native session handling actually completes the magic-link exchange automatically when the app reopens via the custom scheme, or whether `apps/mobile` needs an explicit `Linking` listener calling `supabase.auth.exchangeCodeForSession` / `setSession`. Not verified this session (no way to click a real email link from here).
+
+### Metrics
+- New Edge Function: `bootstrap-profile` (deployed, ACTIVE). `award-habit-xp` redeployed (v2).
+- New package: `@winterarc/shared-types` (7 type files).
+- Commits: 6 (bootstrap-profile, shared-types, award-habit-xp coin fix, mobile wiring, lockfile).
+
+### Next session should
+- Verify the magic-link round trip end-to-end once Julien registers the redirect URL — this needs a human clicking a real email link, can't be done from an agent session.
+- Design the real CDC §110 sync queue if offline resilience matters before more Edge Functions get wired to mobile actions (claim-quest, open-chest, shop-purchase, apply-prestige aren't called from any UI yet — only award-habit-xp and bootstrap-profile are).
+- `rotate-quests` (still nothing assigns quest instances, so `claim-quest` has nothing to claim yet even though it's deployed and correct).
+
+---
+
 ## Session 2026-08-28 (continuation 4, ad-hoc — triggered directly by Julien: "tu as désormais accès à la base de données, fais le setup de la bdd et finis le setup de l'app")
 
 ### Done
