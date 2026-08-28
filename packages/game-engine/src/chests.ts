@@ -39,7 +39,7 @@ function weightedPick(pool: Partial<Record<Rarity, number>>, rng: () => number):
     roll -= weight;
   }
   const last = entries[entries.length - 1];
-  if (!last) throw new Error(`Empty rarity pool for chest spec`);
+  if (!last) throw new Error('Empty rarity pool for chest spec');
   return last[0];
 }
 
