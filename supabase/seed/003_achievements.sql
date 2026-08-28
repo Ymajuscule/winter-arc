@@ -11,6 +11,12 @@
 -- progression, secret ones use hidden=true with whatever category fits.
 
 insert into public.achievements (id, name, description, rarity, category, condition, xp_reward, coins_reward, hidden) values
+  -- Onboarding (CDC §13 first-reward achievement — granted directly by
+  -- bootstrap-profile, not evaluated via evaluate-achievements; the empty
+  -- all_of is vacuously true so it's also technically valid against the
+  -- normal evaluator, kept consistent rather than special-cased)
+  ('day-zero', 'Day Zero', 'Began the Arc.', 'common', 'progression', '{"type":"all_of","conditions":[]}', 0, 0, false),
+
   -- Progression
   ('first-step', 'First Step', 'Complete your first habit.', 'common', 'progression', '{"type":"habit_completions_total","count":1}', 50, 25, false),
   ('rising', 'Rising', 'Reach Level 10.', 'uncommon', 'progression', '{"type":"level_reaches","level":10}', 150, 75, false),

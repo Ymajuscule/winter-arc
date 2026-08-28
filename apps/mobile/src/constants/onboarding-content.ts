@@ -5,6 +5,12 @@
  * Fitness's; the 12 avatar names/descriptions — the CDC says "12 options"
  * but never names them beyond the wireframe's single "The Warrior" example).
  * Not game math — safe to expand/edit without touching game-engine.
+ *
+ * Avatar `id`s are exactly `supabase/seed/002_cosmetics.sql`'s 12 seeded
+ * `avatar-*` cosmetic ids (2026-08-28: aligned after `bootstrap-profile`
+ * needed a real `cosmetics.id` FK for `profiles.avatar_id` — the original
+ * placeholder ids here didn't match the seed at all, a real gap found while
+ * wiring the backend, not a hypothetical one).
  */
 
 export interface AvatarOption {
@@ -15,18 +21,18 @@ export interface AvatarOption {
 
 /** CDC §9 Écran 3 — 12 free starter avatars, each with a short flavor description. */
 export const AVATARS: AvatarOption[] = [
-  { id: 'warrior', name: 'The Warrior', description: 'Disciplined, direct.' },
-  { id: 'scholar', name: 'The Scholar', description: 'Curious, precise.' },
-  { id: 'monk', name: 'The Monk', description: 'Calm, focused.' },
-  { id: 'ranger', name: 'The Ranger', description: 'Steady, resourceful.' },
-  { id: 'artisan', name: 'The Artisan', description: 'Expressive, exacting.' },
-  { id: 'sage', name: 'The Sage', description: 'Balanced, observant.' },
-  { id: 'wanderer', name: 'The Wanderer', description: 'Free, unbound.' },
-  { id: 'guardian', name: 'The Guardian', description: 'Loyal, resilient.' },
-  { id: 'nomad', name: 'The Nomad', description: 'Adaptive, restless.' },
-  { id: 'alchemist', name: 'The Alchemist', description: 'Methodical, transformative.' },
-  { id: 'hunter', name: 'The Hunter', description: 'Patient, relentless.' },
-  { id: 'oracle', name: 'The Oracle', description: 'Perceptive, quiet.' },
+  { id: 'avatar-warrior', name: 'The Warrior', description: 'Disciplined, direct.' },
+  { id: 'avatar-scholar', name: 'The Scholar', description: 'Curious, precise.' },
+  { id: 'avatar-monk', name: 'The Monk', description: 'Calm, focused.' },
+  { id: 'avatar-ranger', name: 'The Ranger', description: 'Steady, resourceful.' },
+  { id: 'avatar-artisan', name: 'The Artisan', description: 'Expressive, exacting.' },
+  { id: 'avatar-sage', name: 'The Sage', description: 'Balanced, observant.' },
+  { id: 'avatar-wanderer', name: 'The Wanderer', description: 'Free, unbound.' },
+  { id: 'avatar-forger', name: 'The Forger', description: 'Methodical, hands-on.' },
+  { id: 'avatar-voyager', name: 'The Voyager', description: 'Curious, far-ranging.' },
+  { id: 'avatar-sentinel', name: 'The Sentinel', description: 'Watchful, steady.' },
+  { id: 'avatar-oracle', name: 'The Oracle', description: 'Perceptive, quiet.' },
+  { id: 'avatar-outrider', name: 'The Outrider', description: 'Bold, ahead of the pack.' },
 ];
 
 export interface DomainOption {
