@@ -1,4 +1,4 @@
-import { completeMagicLinkSignIn } from '@/lib/auth-deep-link';
+import { completeCodeSignIn } from '@/lib/auth-flow';
 import { Surface, Text, spacing } from '@winterarc/ui-primitives';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -6,12 +6,13 @@ import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 /**
- * Where the magic-link email actually lands (`winterarc://auth/callback?code=...`,
- * `app/auth.tsx`'s `emailRedirectTo`) — Expo Router routes the deep link here
- * by file-based convention, handling cold-start and warm-start alike, no
- * separate `Linking` listener needed. `lib/auth-deep-link.ts` has the real
- * logic (exchange the code, bootstrap the returning user's profile); this
- * screen is just the loading/error states around that one async call.
+ * Where both the magic-link email AND the Google OAuth browser session land
+ * (`winterarc://auth/callback?code=...` — `app/auth.tsx`'s
+ * `emailRedirectTo`/`redirectTo`). Expo Router routes the deep link here by
+ * file-based convention, handling cold-start and warm-start alike, no
+ * separate `Linking` listener needed. `lib/auth-flow.ts` has the real logic
+ * (exchange the code, bootstrap the returning user's profile); this screen
+ * is just the loading/error states around that one async call.
  */
 export default function AuthCallbackScreen() {
   const router = useRouter();
@@ -24,7 +25,7 @@ export default function AuthCallbackScreen() {
       return;
     }
     let cancelled = false;
-    completeMagicLinkSignIn(code).then((result) => {
+    completeCodeSignIn(code).then((result) => {
       if (cancelled) return;
       if (result.ok) {
         router.replace('/dashboard');
