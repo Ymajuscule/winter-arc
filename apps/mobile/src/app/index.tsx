@@ -1,98 +1,71 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
+import { useAppStore } from '@/stores/app-store';
+import { Surface, Text, frost, motion, spacing } from '@winterarc/ui-primitives';
+import { Redirect, useRouter } from 'expo-router';
+import { Pressable, StyleSheet } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+/**
+ * CDC §9 Écran 1 — Splash / Welcome. wireframes.md: void background, no
+ * spinner (Design Law: no shimmer/skeleton), text + CTAs appear immediately.
+ * The 3-5s video loop it describes needs a real asset this session doesn't
+ * have — the glow/silhouette treatment is deferred, text-only for now.
+ */
+export default function SplashScreen() {
+  const router = useRouter();
+  const onboarded = useAppStore((s) => s.onboarded);
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
+  // Returning user (already has a local profile) — skip straight to the loop.
+  if (onboarded) return <Redirect href="/dashboard" />;
 
-export default function HomeScreen() {
   return (
-    <ThemedView style={styles.container}>
+    <Surface variant="void" style={styles.root}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
+        <Animated.View entering={FadeIn.duration(motion.duration.hero)} style={styles.hero}>
+          <Text variant="display" color="bone" style={styles.title}>
+            Build your{'\n'}Winter Arc.
+          </Text>
+          <Text variant="body" color="fog" style={styles.subtitle}>
+            Transform your next 90 days.
+          </Text>
+        </Animated.View>
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
-
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
+        <Animated.View
+          entering={FadeIn.delay(motion.duration.panel).duration(motion.duration.panel)}
+          style={styles.actions}
+        >
+          <Pressable
+            onPress={() => router.push('/onboarding/manifesto')}
+            style={({ pressed }) => [styles.primary, pressed && styles.primaryPressed]}
+          >
+            <Text variant="label" color="void">
+              GET STARTED
+            </Text>
+          </Pressable>
+          <Pressable onPress={() => router.push('/auth')} style={styles.secondary}>
+            <Text variant="body" color="fog">
+              Sign In
+            </Text>
+          </Pressable>
+        </Animated.View>
       </SafeAreaView>
-    </ThemedView>
+    </Surface>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
+  root: { flex: 1 },
+  safeArea: { flex: 1, justifyContent: 'space-between', paddingHorizontal: spacing.xl },
+  hero: { flex: 1, justifyContent: 'center' },
+  title: { lineHeight: 40 },
+  subtitle: { marginTop: spacing.md },
+  actions: { paddingBottom: spacing.xl, gap: spacing.md },
+  primary: {
+    backgroundColor: frost.ice,
+    paddingVertical: spacing.md,
     alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
+    borderRadius: 2,
   },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
-  },
+  primaryPressed: { backgroundColor: frost.glacier },
+  secondary: { alignItems: 'center', paddingVertical: spacing.sm },
 });
