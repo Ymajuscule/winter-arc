@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SKILL_IDS, canAllocateSkill, skillsInBranch } from './skills.js';
+import { SKILL_IDS, canAllocateSkill, skillsInBranch } from './skills';
 
 describe('skillsInBranch', () => {
   it('returns exactly 4 nodes per branch (CDC §22: 4 branches of 4)', () => {

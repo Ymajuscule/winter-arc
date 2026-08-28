@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DAILY_XP_CAP, applyDailyXpCap, levelFromTotalXp, xpRequiredForLevel } from './xp.js';
+import { DAILY_XP_CAP, applyDailyXpCap, levelFromTotalXp, xpRequiredForLevel } from './xp';
 
 describe('xpRequiredForLevel', () => {
   it('matches the literal CDC §20 formula for level 1', () => {

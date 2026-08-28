@@ -3,7 +3,7 @@ import {
   type AchievementEvalContext,
   evaluateAchievementCondition,
   evaluateNewlyUnlockedAchievements,
-} from './achievements.js';
+} from './achievements';
 
 const baseCtx: AchievementEvalContext = {
   level: 1,

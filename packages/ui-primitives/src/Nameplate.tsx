@@ -1,7 +1,7 @@
 import { StyleSheet, View, type ViewProps } from 'react-native';
-import { LevelBadge } from './LevelBadge.js';
-import { Text } from './Text.js';
-import { border, frost, radii, spacing } from './tokens.js';
+import { LevelBadge } from './LevelBadge';
+import { Text } from './Text';
+import { border, frost, radii, spacing } from './tokens';
 
 export interface NameplateProps extends ViewProps {
   username: string;

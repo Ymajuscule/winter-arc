@@ -1,5 +1,5 @@
 import { Text as RNText, type TextProps as RNTextProps, StyleSheet } from 'react-native';
-import { frost, typography } from './tokens.js';
+import { frost, typography } from './tokens';
 
 export type TextVariant = 'display' | 'title' | 'body' | 'mono' | 'label' | 'hero';
 

@@ -1,5 +1,5 @@
 import { StyleSheet, View, type ViewProps } from 'react-native';
-import { frost } from './tokens.js';
+import { frost } from './tokens';
 
 export type SurfaceVariant = 'void' | 'obsidian' | 'graphite';
 

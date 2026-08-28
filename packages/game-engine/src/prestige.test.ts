@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPrestige, canPrestige, isLegend, prestigeXpBonus } from './prestige.js';
+import { applyPrestige, canPrestige, isLegend, prestigeXpBonus } from './prestige';
 
 describe('canPrestige', () => {
   it('requires level 100', () => {

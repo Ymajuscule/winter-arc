@@ -1,7 +1,7 @@
 import { StyleSheet, View, type ViewProps } from 'react-native';
-import { Text } from './Text.js';
-import { FlameIcon } from './icons/FlameIcon.js';
-import { frost, spacing } from './tokens.js';
+import { Text } from './Text';
+import { FlameIcon } from './icons/FlameIcon';
+import { frost, spacing } from './tokens';
 
 export interface StreakFlameProps extends ViewProps {
   days: number;

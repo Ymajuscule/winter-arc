@@ -1,5 +1,5 @@
 import Svg, { Path } from 'react-native-svg';
-import type { IconProps } from './FlameIcon.js';
+import type { IconProps } from './FlameIcon';
 
 export function CheckIcon({ size = 24, color = '#7FB7D9' }: IconProps) {
   return (

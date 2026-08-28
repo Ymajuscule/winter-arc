@@ -4,7 +4,7 @@ import {
   calculateStatRawPoints,
   calculateStatScores,
   statScoreFromRawPoints,
-} from './stats.js';
+} from './stats';
 
 describe('calculateStatRawPoints', () => {
   it('accumulates weighted points per stat across contributions', () => {

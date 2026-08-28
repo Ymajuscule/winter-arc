@@ -1,3 +1,3 @@
-export * from './FlameIcon.js';
-export * from './CheckIcon.js';
-export * from './ChevronIcon.js';
+export * from './FlameIcon';
+export * from './CheckIcon';
+export * from './ChevronIcon';

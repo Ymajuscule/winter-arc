@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_BONUS, calculateXpMultiplier } from './multipliers.js';
+import { MAX_BONUS, calculateXpMultiplier } from './multipliers';
 
 const baseInput = {
   streakDays: 0,

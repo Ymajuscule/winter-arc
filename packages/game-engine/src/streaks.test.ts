@@ -5,7 +5,7 @@ import {
   advanceStreak,
   isWithinComebackWindow,
   milestoneReachedAt,
-} from './streaks.js';
+} from './streaks';
 
 const freshState: StreakState = {
   currentCount: 0,

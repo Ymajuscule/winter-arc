@@ -1,6 +1,6 @@
 import { StyleSheet, View, type ViewProps } from 'react-native';
-import { Text } from './Text.js';
-import { border, frost, radii, spacing } from './tokens.js';
+import { Text } from './Text';
+import { border, frost, radii, spacing } from './tokens';
 
 export interface LevelBadgeProps extends ViewProps {
   level: number;

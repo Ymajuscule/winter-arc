@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { StyleSheet, View, type ViewProps } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import { border, frost, motion, radii } from './tokens.js';
+import { border, frost, motion, radii } from './tokens';
 
 export interface XPBarProps extends ViewProps {
   /** 0-1 */

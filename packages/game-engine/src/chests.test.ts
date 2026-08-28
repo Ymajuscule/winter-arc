@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CHEST_SPECS, FRAGMENT_VALUE_BY_RARITY, rollChestRarities } from './chests.js';
+import { CHEST_SPECS, FRAGMENT_VALUE_BY_RARITY, rollChestRarities } from './chests';
 
 function constantRng(value: number) {
   return () => value;

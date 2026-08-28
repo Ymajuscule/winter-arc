@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type QuestEvalContext, evaluateQuestProgress, isQuestComplete } from './quests.js';
+import { type QuestEvalContext, evaluateQuestProgress, isQuestComplete } from './quests';
 
 const baseCtx: QuestEvalContext = {
   habitCompletionsInPeriod: 0,

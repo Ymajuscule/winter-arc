@@ -1,5 +1,5 @@
 import Svg, { Path } from 'react-native-svg';
-import type { IconProps } from './FlameIcon.js';
+import type { IconProps } from './FlameIcon';
 
 export type ChevronDirection = 'left' | 'right' | 'up' | 'down';
 

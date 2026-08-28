@@ -1,6 +1,6 @@
 import { StyleSheet, View, type ViewProps } from 'react-native';
-import { Text } from './Text.js';
-import { border, frost, radii } from './tokens.js';
+import { Text } from './Text';
+import { border, frost, radii } from './tokens';
 
 export interface EmblemProps extends ViewProps {
   /** 1-2 letters — CDC §55 emblems are a symbol/blason; a real icon set per-class/achievement is a later pass. */

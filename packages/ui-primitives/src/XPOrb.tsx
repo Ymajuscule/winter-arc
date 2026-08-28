@@ -8,8 +8,8 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { Text } from './Text.js';
-import { motion } from './tokens.js';
+import { Text } from './Text';
+import { motion } from './tokens';
 
 export interface XPOrbProps {
   amount: number;

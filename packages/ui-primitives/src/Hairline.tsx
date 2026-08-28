@@ -1,5 +1,5 @@
 import { StyleSheet, View, type ViewProps } from 'react-native';
-import { border } from './tokens.js';
+import { border } from './tokens';
 
 export type HairlineOrientation = 'horizontal' | 'vertical';
 

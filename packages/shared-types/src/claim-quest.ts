@@ -1,5 +1,5 @@
 import type { LevelProgress } from '@winterarc/game-engine';
-import type { AchievementUnlockResult } from './evaluate-achievements.js';
+import type { AchievementUnlockResult } from './evaluate-achievements';
 
 export interface ClaimQuestRequest {
   userQuestId: string;

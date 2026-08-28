@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classSynergyBonus, hasClassSynergy } from './classes.js';
+import { classSynergyBonus, hasClassSynergy } from './classes';
 
 describe('hasClassSynergy', () => {
   it('matches a habit category against the class focus', () => {

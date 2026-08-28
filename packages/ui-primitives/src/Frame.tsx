@@ -1,5 +1,5 @@
 import { StyleSheet, View, type ViewProps } from 'react-native';
-import { frost, radii } from './tokens.js';
+import { frost, radii } from './tokens';
 
 export type FrameTier = 'iron' | 'bronze' | 'silver' | 'gold' | 'platinum' | 'diamond' | 'obsidian';
 
