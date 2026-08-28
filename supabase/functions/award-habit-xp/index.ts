@@ -19,6 +19,9 @@
  *   Hard-coded false.
  * - isEarlyBird uses UTC hour < 9 as a placeholder for "before 9am local" —
  *   there's no user timezone stored yet (CDC doesn't specify where it'd live).
+ * - Streak threshold now reads profiles.difficulty via
+ *   STREAK_THRESHOLD_BY_DIFFICULTY (game-engine/streaks.ts) instead of a
+ *   hard-coded 60 — closes a gap this file used to flag directly.
  *
  * Wrapped in withIdempotency (2026-08-28) — a retried network call with the
  * same Idempotency-Key header replays the cached result instead of
@@ -30,7 +33,12 @@
  */
 import { type ClassId, classSynergyBonus } from '../../../packages/game-engine/src/classes.ts';
 import { calculateXpMultiplier } from '../../../packages/game-engine/src/multipliers.ts';
-import { type StreakState, advanceStreak } from '../../../packages/game-engine/src/streaks.ts';
+import {
+  type Difficulty,
+  STREAK_THRESHOLD_BY_DIFFICULTY,
+  type StreakState,
+  advanceStreak,
+} from '../../../packages/game-engine/src/streaks.ts';
 import {
   DAILY_XP_CAP,
   applyDailyXpCap,
@@ -86,7 +94,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: profile } = await db
       .from('profiles')
-      .select('total_xp, current_class_id')
+      .select('total_xp, lifetime_xp, current_class_id, difficulty')
       .eq('user_id', user.id)
       .single();
     if (!profile) return { status: 404, body: { error: 'Profile not found' } };
@@ -161,6 +169,7 @@ Deno.serve(async (req: Request) => {
       .from('profiles')
       .update({
         total_xp: newTotalXp,
+        lifetime_xp: profile.lifetime_xp + xpAwarded, // CDC §23-24 — never reset by prestige
         level: levelProgress.level,
         updated_at: new Date().toISOString(),
       })
@@ -170,7 +179,7 @@ Deno.serve(async (req: Request) => {
       state: streakState,
       today: body.loggedFor,
       completionPct,
-      requiredThreshold: 60, // TODO: read from the user's Arc difficulty (CDC §9 Écran 9), not hard-coded
+      requiredThreshold: STREAK_THRESHOLD_BY_DIFFICULTY[profile.difficulty as Difficulty],
       freezesAllowedThisMonth: 1,
       freezesUsedThisMonth: 0, // TODO: derive from streakState.freezeUsedOn vs current month
       wasActiveSixOfLastSeven: false, // TODO: needs a 7-day habit_logs lookback query

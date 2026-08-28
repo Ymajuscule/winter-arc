@@ -9,6 +9,15 @@
 
 export type IsoDate = string; // "YYYY-MM-DD"
 
+/** Difficulty -> required daily completion % for the streak to hold — CDC §9 Écran 9. */
+export type Difficulty = 'easy' | 'normal' | 'hard' | 'extreme';
+export const STREAK_THRESHOLD_BY_DIFFICULTY: Record<Difficulty, number> = {
+  easy: 60,
+  normal: 75,
+  hard: 85,
+  extreme: 95,
+};
+
 export interface StreakState {
   currentCount: number;
   longestCount: number;

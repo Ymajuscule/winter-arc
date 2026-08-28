@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  STREAK_THRESHOLD_BY_DIFFICULTY,
   type StreakState,
   advanceStreak,
   isWithinComebackWindow,
@@ -143,5 +144,14 @@ describe('isWithinComebackWindow', () => {
 
   it('is false on day 8 and beyond', () => {
     expect(isWithinComebackWindow('2026-08-01', '2026-08-08')).toBe(false);
+  });
+});
+
+describe('STREAK_THRESHOLD_BY_DIFFICULTY', () => {
+  it('matches the CDC §9 Écran 9 thresholds, ascending with difficulty', () => {
+    expect(STREAK_THRESHOLD_BY_DIFFICULTY.easy).toBe(60);
+    expect(STREAK_THRESHOLD_BY_DIFFICULTY.normal).toBe(75);
+    expect(STREAK_THRESHOLD_BY_DIFFICULTY.hard).toBe(85);
+    expect(STREAK_THRESHOLD_BY_DIFFICULTY.extreme).toBe(95);
   });
 });
