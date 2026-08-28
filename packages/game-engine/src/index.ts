@@ -6,3 +6,4 @@ export * from './classes.js';
 export * from './achievements.js';
 export * from './quests.js';
 export * from './stats.js';
+export * from './skills.js';
