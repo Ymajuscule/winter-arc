@@ -214,7 +214,7 @@ export async function evaluateAndUnlockAchievements(
     });
     const { data: current } = await db
       .from('profiles')
-      .select('total_xp')
+      .select('total_xp, lifetime_xp')
       .eq('user_id', userId)
       .single();
     const newTotalXp = (current?.total_xp ?? 0) + xpAwarded;
@@ -223,6 +223,7 @@ export async function evaluateAndUnlockAchievements(
       .from('profiles')
       .update({
         total_xp: newTotalXp,
+        lifetime_xp: (current?.lifetime_xp ?? 0) + xpAwarded, // CDC §23-24 — never reset by prestige
         level: levelProgress.level,
         updated_at: new Date().toISOString(),
       })
