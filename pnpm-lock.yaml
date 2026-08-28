@@ -41,6 +41,9 @@ importers:
       '@winterarc/game-engine':
         specifier: workspace:*
         version: link:../../packages/game-engine
+      '@winterarc/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
       '@winterarc/ui-primitives':
         specifier: workspace:*
         version: link:../../packages/ui-primitives
@@ -138,6 +141,16 @@ importers:
       vitest:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@26.4.0)(lightningcss@1.33.0)(terser@5.51.2)
+
+  packages/shared-types:
+    dependencies:
+      '@winterarc/game-engine':
+        specifier: workspace:*
+        version: link:../game-engine
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
 
   packages/ui-primitives:
     dependencies:
@@ -4847,7 +4860,9 @@ snapshots:
       metro-runtime: 0.84.5
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-colors@0.74.89': {}
 
