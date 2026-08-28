@@ -1,5 +1,6 @@
 import { ApiRequestError, api } from '@/services/api';
 import { supabase } from '@/services/supabase';
+import { useAppStore } from '@/stores/app-store';
 import { useSessionStore } from '@/stores/session-store';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -119,7 +120,27 @@ export function useClaimQuest() {
 
   return useMutation({
     mutationFn: (userQuestId: string) => api.claimQuest({ userQuestId }),
-    onSuccess: () => {
+    onSuccess: (response) => {
+      // A successful claim grants XP/coins server-side (profiles.total_xp,
+      // user_currency) that app-store's local mirror has no other way to
+      // learn about — completeHabit's deltas only track habit completions.
+      // totalXp is absolute here (level.totalXp), unlike enqueueAchievementUnlocks'
+      // additive xp below, since claim-quest's own reward isn't reflected
+      // anywhere else in the store yet.
+      useAppStore.setState((state) => ({
+        totalXp: response.level.totalXp,
+        lifetimeXp: state.lifetimeXp + response.xpAwarded,
+        coins: state.coins + response.coinsAwarded,
+      }));
+      if (response.achievements.newlyUnlockedIds.length > 0) {
+        useAppStore
+          .getState()
+          .enqueueAchievementUnlocks(
+            response.achievements.newlyUnlockedIds,
+            response.achievements.xpAwarded,
+            response.achievements.coinsAwarded,
+          );
+      }
       queryClient.invalidateQueries({ queryKey: ['quests'] });
     },
     onError: (err) => {

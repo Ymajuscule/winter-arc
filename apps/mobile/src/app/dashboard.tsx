@@ -1,3 +1,4 @@
+import { AchievementUnlockGate } from '@/components/achievement-unlock-gate';
 import { LevelUpOverlay } from '@/components/level-up-overlay';
 import { type QuestInstance, useClaimQuest, useDailyQuests, useWeeklyQuests } from '@/hooks/use-quests';
 import { type AppHabit, useAppStore } from '@/stores/app-store';
@@ -256,7 +257,9 @@ export default function DashboardScreen() {
       <XPOrb amount={lastXpEvent.amount} trigger={lastXpEvent.trigger} />
       {lastLevelUp > 0 ? (
         <LevelUpOverlay level={lastLevelUp} onProceed={acknowledgeLevelUp} />
-      ) : null}
+      ) : (
+        <AchievementUnlockGate />
+      )}
     </Surface>
   );
 }

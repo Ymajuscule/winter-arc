@@ -84,6 +84,8 @@ interface AppState {
   lastXpEvent: XpEvent;
   lastLevelUp: number; // level just reached, 0 = none pending
   dailyRewardClaimedOn: string | null;
+  /** Achievement ids unlocked but not yet shown (FIFO — AchievementUnlockGate dequeues one at a time). */
+  pendingAchievementIds: string[];
 
   initializeFromOnboarding: (input: {
     username: string;
@@ -100,6 +102,8 @@ interface AppState {
   completeHabit: (habitId: string) => Promise<void>;
   acknowledgeLevelUp: () => void;
   claimDailyReward: () => void;
+  enqueueAchievementUnlocks: (ids: string[], xpAwarded: number, coinsAwarded: number) => void;
+  dismissAchievement: () => void;
 }
 
 /** CDC §70 — flat daily-login bonus, distinct from per-habit coin gains. */
@@ -194,6 +198,7 @@ export const useAppStore = create<AppState>()(
       lastXpEvent: { amount: 0, trigger: 0 },
       lastLevelUp: 0,
       dailyRewardClaimedOn: null,
+      pendingAchievementIds: [],
 
       initializeFromOnboarding: ({
         username,
@@ -297,6 +302,13 @@ export const useAppStore = create<AppState>()(
                   ? response.level.level
                   : current.lastLevelUp,
             });
+            if (response.achievements.newlyUnlockedIds.length > 0) {
+              get().enqueueAchievementUnlocks(
+                response.achievements.newlyUnlockedIds,
+                response.achievements.xpAwarded,
+                response.achievements.coinsAwarded,
+              );
+            }
             return;
           } catch (err) {
             // Falls through to the local path below — see file header on why
@@ -331,6 +343,25 @@ export const useAppStore = create<AppState>()(
         const today = todayIso();
         if (state.dailyRewardClaimedOn === today) return;
         set({ coins: state.coins + DAILY_REWARD_COINS, dailyRewardClaimedOn: today });
+      },
+
+      // Achievement XP/coins are granted server-side by evaluateAndUnlockAchievements
+      // in the *same* call as the habit/quest reward, but award-habit-xp's
+      // `level`/claim-quest's `level` are computed *before* that runs (see
+      // their file headers) — so this store's totalXp/coins would silently
+      // under-count by the achievement's reward without this top-up.
+      enqueueAchievementUnlocks: (ids, xpAwarded, coinsAwarded) => {
+        const state = get();
+        set({
+          totalXp: state.totalXp + xpAwarded,
+          lifetimeXp: state.lifetimeXp + xpAwarded,
+          coins: state.coins + coinsAwarded,
+          pendingAchievementIds: [...state.pendingAchievementIds, ...ids],
+        });
+      },
+      dismissAchievement: () => {
+        const state = get();
+        set({ pendingAchievementIds: state.pendingAchievementIds.slice(1) });
       },
     }),
     {
