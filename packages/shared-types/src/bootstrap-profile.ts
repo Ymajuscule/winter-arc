@@ -13,6 +13,7 @@ export interface BootstrapProfileResponse {
   profile: Record<string, unknown>;
   currency: Record<string, unknown>;
   streak: Record<string, unknown>;
+  arc: Record<string, unknown>;
   habits: Record<string, unknown>[];
   alreadyBootstrapped: boolean;
 }

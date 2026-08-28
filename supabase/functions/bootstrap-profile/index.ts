@@ -25,9 +25,15 @@
  * catalog for this (empty `all_of` = vacuously true, CDC §13 never gave it
  * an XP value so it's 0 XP / 10 coins, a welcome flag not a grind reward).
  *
- * No `arcs` row is created — Arc creation/lifecycle (CDC §134 Phase 0 gap,
- * still open per TODO.md) isn't built yet. Habits get `arc_id: null`
- * ("habitude persistante hors arc", explicitly schema-supported).
+ * Creates the user's first `arcs` row (CDC §134 Phase 0 gap, closed
+ * 2026-08-28): default 90 days starting today, name "Winter Arc" (the
+ * glossary's own name for "arc principal hivernal" — CDC never names a
+ * per-arc naming scheme beyond that), difficulty from onboarding. Habits
+ * created alongside it are linked via `arc_id` rather than left null, since
+ * they're genuinely born inside this Arc, not the "habitude persistante
+ * hors arc" case the schema also supports for later-added habits. Full Arc
+ * *lifecycle* (pause/complete/vacation mode, CDC §37) is still unbuilt —
+ * this only covers creation.
  */
 import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
 import { getUserFromRequest, supabaseAdmin } from '../_shared/supabase-admin.ts';
@@ -42,6 +48,11 @@ interface BootstrapProfileBody {
 
 const DEFAULT_HABIT_XP = 40; // CDC §18 — simple habit default
 const DAY_ZERO_ACHIEVEMENT_ID = 'day-zero';
+const ARC_LENGTH_DAYS = 90; // CDC §134 — default Arc length
+
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
@@ -122,6 +133,34 @@ Deno.serve(async (req: Request) => {
         .single()
     ).data;
 
+  const { data: existingArc } = await db
+    .from('arcs')
+    .select('*')
+    .eq('user_id', user.id)
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  let arc = existingArc;
+  if (!arc) {
+    const startsOn = new Date();
+    const endsOn = new Date(startsOn.getTime() + ARC_LENGTH_DAYS * 86_400_000);
+    const { data: createdArc, error: arcError } = await db
+      .from('arcs')
+      .insert({
+        user_id: user.id,
+        name: 'Winter Arc',
+        starts_on: isoDate(startsOn),
+        ends_on: isoDate(endsOn),
+        difficulty: body.difficulty,
+        status: 'active',
+      })
+      .select()
+      .single();
+    if (arcError) return jsonResponse({ error: arcError.message }, 500);
+    arc = createdArc;
+  }
+
   const { data: existingHabits } = await db.from('habits').select('*').eq('user_id', user.id);
 
   let habits = existingHabits ?? [];
@@ -131,7 +170,7 @@ Deno.serve(async (req: Request) => {
       .insert(
         body.habits.map((h) => ({
           user_id: user.id,
-          arc_id: null,
+          arc_id: arc.id,
           name: h.name,
           category: h.category,
           type: 'boolean',
@@ -148,6 +187,7 @@ Deno.serve(async (req: Request) => {
     profile,
     currency,
     streak,
+    arc,
     habits,
     alreadyBootstrapped: existingProfile != null,
   });

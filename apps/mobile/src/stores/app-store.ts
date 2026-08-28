@@ -55,6 +55,16 @@ export interface Profile {
   title: string | null;
 }
 
+/** CDC §134 — the 90-day progression container. Creation-only for now (no pause/complete/vacation actions yet, TODO.md). */
+export interface AppArc {
+  id: string;
+  name: string;
+  startsOn: string; // ISO date (yyyy-mm-dd)
+  endsOn: string; // ISO date (yyyy-mm-dd)
+  difficulty: Difficulty;
+  status: 'active' | 'completed' | 'abandoned' | 'vacation';
+}
+
 interface XpEvent {
   amount: number;
   trigger: number;
@@ -64,6 +74,7 @@ interface AppState {
   onboarded: boolean;
   isCloudSynced: boolean;
   profile: Profile;
+  arc: AppArc | null;
   totalXp: number;
   lifetimeXp: number;
   coins: number;
@@ -96,8 +107,15 @@ const DAILY_REWARD_COINS = 20;
 
 const PERIODS: AppHabit['period'][] = ['morning', 'afternoon', 'evening'];
 
+/** CDC §134 — default Arc length, mirrors bootstrap-profile's server-side constant. */
+const ARC_LENGTH_DAYS = 90;
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function isoDatePlusDays(base: Date, days: number): string {
+  return new Date(base.getTime() + days * 86_400_000).toISOString().slice(0, 10);
 }
 
 const initialProfile: Profile = {
@@ -166,6 +184,7 @@ export const useAppStore = create<AppState>()(
       onboarded: false,
       isCloudSynced: false,
       profile: initialProfile,
+      arc: null,
       totalXp: 0,
       lifetimeXp: 0,
       coins: 0,
@@ -184,10 +203,19 @@ export const useAppStore = create<AppState>()(
         difficulty,
         habits,
       }) => {
+        const startsOn = new Date();
         set({
           onboarded: true,
           isCloudSynced: false,
           profile: { ...initialProfile, username, avatarId, paletteId, classId, difficulty },
+          arc: {
+            id: 'local-arc',
+            name: 'Winter Arc',
+            startsOn: todayIso(),
+            endsOn: isoDatePlusDays(startsOn, ARC_LENGTH_DAYS),
+            difficulty,
+            status: 'active',
+          },
           habits: habits.map((h, i) => ({
             ...h,
             xpValue: 40, // CDC §18 — simple habit default; per-habit difficulty tiers not modeled in onboarding yet
@@ -201,6 +229,7 @@ export const useAppStore = create<AppState>()(
         const profileRow = response.profile as Record<string, unknown>;
         const currencyRow = response.currency as Record<string, unknown>;
         const streakRow = response.streak as Record<string, unknown>;
+        const arcRow = response.arc as Record<string, unknown>;
 
         set({
           onboarded: true,
@@ -212,6 +241,14 @@ export const useAppStore = create<AppState>()(
             classId: (profileRow.current_class_id as ClassId | null) ?? null,
             difficulty,
             title: 'The Awakened',
+          },
+          arc: {
+            id: arcRow.id as string,
+            name: arcRow.name as string,
+            startsOn: arcRow.starts_on as string,
+            endsOn: arcRow.ends_on as string,
+            difficulty: (arcRow.difficulty as Difficulty) ?? difficulty,
+            status: (arcRow.status as AppArc['status']) ?? 'active',
           },
           totalXp: (profileRow.total_xp as number) ?? 0,
           lifetimeXp: (profileRow.lifetime_xp as number) ?? 0,

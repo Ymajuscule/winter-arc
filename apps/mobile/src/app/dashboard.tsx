@@ -1,4 +1,5 @@
 import { LevelUpOverlay } from '@/components/level-up-overlay';
+import { type QuestInstance, useClaimQuest, useDailyQuests, useWeeklyQuests } from '@/hooks/use-quests';
 import { type AppHabit, useAppStore } from '@/stores/app-store';
 import { CLASSES, levelFromTotalXp } from '@winterarc/game-engine';
 import {
@@ -26,18 +27,75 @@ const PERIOD_LABEL: Record<AppHabit['period'], string> = {
   evening: 'EVENING',
 };
 
+/** 1-indexed day-of-arc and total length, from ISO date strings (yyyy-mm-dd). */
+function arcDayProgress(startsOn: string, endsOn: string): { day: number; total: number } {
+  const start = new Date(`${startsOn}T00:00:00Z`);
+  const end = new Date(`${endsOn}T00:00:00Z`);
+  const today = new Date(`${todayIso()}T00:00:00Z`);
+  const day = Math.floor((today.getTime() - start.getTime()) / 86_400_000) + 1;
+  const total = Math.round((end.getTime() - start.getTime()) / 86_400_000);
+  return { day: Math.min(Math.max(day, 1), total), total };
+}
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function QuestRow({
+  quest,
+  onClaim,
+  claiming,
+}: {
+  quest: QuestInstance;
+  onClaim: () => void;
+  claiming: boolean;
+}) {
+  // Tapping always attempts a claim, even below 100% displayed progress: the
+  // server recomputes from real habit_logs on every call (claim-quest),
+  // which is also the only thing that refreshes `progress` today — there's
+  // no separate "just refresh" endpoint (see use-quests.ts's file header).
+  // A short-of-100 attempt comes back 409 and just updates what's shown.
+  const attemptable = quest.status !== 'claimed';
+
+  return (
+    <View style={styles.questRow}>
+      <View style={styles.questInfo}>
+        <Text variant="body" color={quest.status === 'claimed' ? 'fog' : 'ghost'}>
+          {quest.name}
+        </Text>
+        <Text variant="mono" color="fog" style={styles.questProgress}>
+          {quest.status === 'claimed' ? 'CLAIMED' : `${Math.round(quest.progress)}%`} · +
+          {quest.xpReward} XP
+        </Text>
+      </View>
+      {attemptable ? (
+        <Pressable onPress={onClaim} disabled={claiming} style={styles.claimButton}>
+          <Text variant="label" color="void">
+            {claiming ? '…' : quest.progress >= 100 ? 'CLAIM' : 'CHECK'}
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 /**
  * CDC §14 — Dashboard. Zones 1-3 (header, today hero, habits) are real and
- * wired to app-store. Zone 4 (Daily Quests) is an honest empty state, not
- * fabricated data — rotate-quests (the assignment cron) isn't written yet
- * (TODO.md), so there is no real quest to show. Weekly Progress / Boss
- * (Zones 5-6) need history this local-only store doesn't track yet
- * (per-day completion over time, not just "today") — omitted rather than
- * faked, same reasoning.
+ * wired to app-store. Zone 4 (Daily Quests) and a weekly-quests block (not a
+ * literal CDC Zone, folded into the same area) read real `user_quests` rows
+ * via TanStack Query (`hooks/use-quests.ts`) once `rotate-quests` (the
+ * assignment cron, written 2026-08-28) has run for a user — still an honest
+ * empty state ("No quests assigned yet.") when demo-mode/not cloud-synced,
+ * since quests only exist server-side. Zone 5's literal "weekly progress bar
+ * + days remaining" and Zone 6 (Boss) still need history this local-only
+ * store doesn't track (per-day completion over time) — omitted rather than
+ * faked, same reasoning as before.
  */
 export default function DashboardScreen() {
   const router = useRouter();
   const profile = useAppStore((s) => s.profile);
+  const arc = useAppStore((s) => s.arc);
+  const isCloudSynced = useAppStore((s) => s.isCloudSynced);
   const totalXp = useAppStore((s) => s.totalXp);
   const habits = useAppStore((s) => s.habits);
   const streak = useAppStore((s) => s.streak);
@@ -46,6 +104,9 @@ export default function DashboardScreen() {
   const lastLevelUp = useAppStore((s) => s.lastLevelUp);
   const completeHabit = useAppStore((s) => s.completeHabit);
   const acknowledgeLevelUp = useAppStore((s) => s.acknowledgeLevelUp);
+  const { data: dailyQuests } = useDailyQuests();
+  const { data: weeklyQuests } = useWeeklyQuests();
+  const claimQuest = useClaimQuest();
 
   const levelProgress = levelFromTotalXp(totalXp);
   const completedCount = habits.filter((h) => h.completedToday).length;
@@ -89,9 +150,17 @@ export default function DashboardScreen() {
           <Hairline style={styles.sectionDivider} />
 
           <View style={styles.hero}>
-            <Text variant="label" color="fog">
-              TODAY
-            </Text>
+            <View style={styles.heroLabelRow}>
+              <Text variant="label" color="fog">
+                TODAY
+              </Text>
+              {arc ? (
+                <Text variant="mono" color="fog">
+                  {arc.name.toUpperCase()} · DAY {arcDayProgress(arc.startsOn, arc.endsOn).day} /{' '}
+                  {arcDayProgress(arc.startsOn, arc.endsOn).total}
+                </Text>
+              ) : null}
+            </View>
             <Text variant="hero" color="bone">
               {completionPct}% COMPLETE
             </Text>
@@ -144,10 +213,37 @@ export default function DashboardScreen() {
             <Text variant="label" color="fog">
               DAILY QUESTS
             </Text>
-            <Text variant="body" color="fog">
-              No quests assigned yet.
-            </Text>
+            {isCloudSynced && dailyQuests && dailyQuests.length > 0 ? (
+              dailyQuests.map((q) => (
+                <QuestRow
+                  key={q.id}
+                  quest={q}
+                  onClaim={() => claimQuest.mutate(q.id)}
+                  claiming={claimQuest.isPending && claimQuest.variables === q.id}
+                />
+              ))
+            ) : (
+              <Text variant="body" color="fog">
+                No quests assigned yet.
+              </Text>
+            )}
           </View>
+
+          {isCloudSynced && weeklyQuests && weeklyQuests.length > 0 ? (
+            <View style={styles.emptySection}>
+              <Text variant="label" color="fog">
+                WEEKLY QUESTS
+              </Text>
+              {weeklyQuests.map((q) => (
+                <QuestRow
+                  key={q.id}
+                  quest={q}
+                  onClaim={() => claimQuest.mutate(q.id)}
+                  claiming={claimQuest.isPending && claimQuest.variables === q.id}
+                />
+              ))}
+            </View>
+          ) : null}
 
           <Pressable onPress={() => router.push('/day-recap')} style={styles.recapLink}>
             <Text variant="label" color="fog">
@@ -173,6 +269,7 @@ const styles = StyleSheet.create({
   headerXpBar: {},
   sectionDivider: { marginVertical: spacing.sm },
   hero: { gap: spacing.sm },
+  heroLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   xpToday: {},
   periodBlock: { gap: spacing.sm },
   habitRow: {
@@ -193,5 +290,20 @@ const styles = StyleSheet.create({
   },
   checkboxDone: { backgroundColor: frost.ice, borderColor: frost.ice },
   emptySection: { gap: spacing.xs },
+  questRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.xs,
+    gap: spacing.md,
+  },
+  questInfo: { flex: 1, gap: 2 },
+  questProgress: {},
+  claimButton: {
+    backgroundColor: frost.ice,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.sm,
+  },
   recapLink: { alignItems: 'center', paddingVertical: spacing.md },
 });

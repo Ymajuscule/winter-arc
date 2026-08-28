@@ -1,5 +1,6 @@
 import { useAppFonts } from '@/hooks/use-app-fonts';
 import { initSessionListener } from '@/stores/session-store';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { frost } from '@winterarc/ui-primitives';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -8,6 +9,11 @@ import { StatusBar } from 'react-native';
 
 SplashScreen.preventAutoHideAsync();
 initSessionListener();
+
+/** CLAUDE.md §3 — TanStack Query owns server state (quests today; more reads move here over time). */
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
+});
 
 /**
  * Root layout — dark-only theme lock (CLAUDE.md §12: "dark cinematic, not
@@ -26,7 +32,7 @@ export default function RootLayout() {
   if (!fontsLoaded) return null;
 
   return (
-    <>
+    <QueryClientProvider client={queryClient}>
       <StatusBar barStyle="light-content" backgroundColor={frost.void} />
       <Stack
         screenOptions={{
@@ -35,6 +41,6 @@ export default function RootLayout() {
           animation: 'fade',
         }}
       />
-    </>
+    </QueryClientProvider>
   );
 }
