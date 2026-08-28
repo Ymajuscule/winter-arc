@@ -30,6 +30,13 @@
  * event that can cross an achievement threshold (level/streak/category
  * count) — the response's `achievements` field is empty most of the time and
  * populated exactly when something unlocks.
+ *
+ * Real gap found while wiring the mobile app to this function (2026-08-28,
+ * continuation 4): this never touched user_currency, so Coins (CDC §70)
+ * would have silently stayed at 0 forever through the real API. Fixed —
+ * habit.difficulty 'easy'/'medium' -> +2 Coins, 'hard'/'extreme' -> +8,
+ * matching CDC §70's "simple / difficile" split onto the 4-tier difficulty
+ * column that actually exists (CDC's own table is binary, the schema isn't).
  */
 import { type ClassId, classSynergyBonus } from '../../../packages/game-engine/src/classes.ts';
 import { calculateXpMultiplier } from '../../../packages/game-engine/src/multipliers.ts';
@@ -175,6 +182,23 @@ Deno.serve(async (req: Request) => {
       })
       .eq('user_id', user.id);
 
+    const coinsAwarded =
+      xpAwarded > 0 ? (habit.difficulty === 'hard' || habit.difficulty === 'extreme' ? 8 : 2) : 0;
+    if (coinsAwarded > 0) {
+      const { data: currency } = await db
+        .from('user_currency')
+        .select('coins')
+        .eq('user_id', user.id)
+        .single();
+      await db
+        .from('user_currency')
+        .update({
+          coins: (currency?.coins ?? 0) + coinsAwarded,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', user.id);
+    }
+
     const streakOutcome = advanceStreak({
       state: streakState,
       today: body.loggedFor,
@@ -201,6 +225,7 @@ Deno.serve(async (req: Request) => {
       status: 200,
       body: {
         xpAwarded,
+        coinsAwarded,
         completionPct,
         multiplier: multiplier.multiplier,
         dailyXpCap: DAILY_XP_CAP,

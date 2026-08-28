@@ -9,6 +9,7 @@ export interface AwardHabitXpRequest {
 
 export interface AwardHabitXpResponse {
   xpAwarded: number;
+  coinsAwarded: number;
   completionPct: number;
   multiplier: number;
   dailyXpCap: number;
