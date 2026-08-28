@@ -4,3 +4,5 @@ export * from './streaks.js';
 export * from './prestige.js';
 export * from './classes.js';
 export * from './achievements.js';
+export * from './quests.js';
+export * from './stats.js';
