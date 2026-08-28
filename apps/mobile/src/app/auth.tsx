@@ -1,3 +1,4 @@
+import { isSupabaseConfigured, supabase } from '@/services/supabase';
 import { Surface, Text, frost, spacing } from '@winterarc/ui-primitives';
 import { useState } from 'react';
 import { Pressable, StyleSheet, TextInput } from 'react-native';
@@ -6,17 +7,42 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 /**
  * CDC §10 / CLAUDE.md §3 — "void background, mono WINTER ARC wordmark,
  * single input, single button. No signup/login toggle — one field figures
- * it out." Magic link only for now (email + Supabase Auth `signInWithOtp`,
- * CDC §10) — Apple/Google/GitHub buttons need their own OAuth setup once
- * Supabase is linked, not added as dead buttons here.
+ * it out." Magic link only for now — Apple/Google/GitHub need their own
+ * OAuth setup, not stubbed as dead buttons here.
  *
- * Not wired to Supabase yet (no project linked this session) — pressing
- * Send does nothing but show the sent state. `src/services/supabase.ts`
- * is where the real `signInWithOtp` call goes once there's a project URL.
+ * Real `signInWithOtp` call (2026-08-28, continuation 4 — Supabase is
+ * linked now). `emailRedirectTo` uses the app's own scheme (`winterarc://`,
+ * app.json) so the magic link reopens the app instead of a browser — but
+ * that URL still needs registering in the Supabase dashboard's Auth ->
+ * URL Configuration -> Redirect URLs (not settable via the MCP tools this
+ * session has). Landing back in the app from the link and exchanging it
+ * for a session (`supabase.auth` deep-link handling) isn't wired yet
+ * either — session-store.ts picks up the session once one exists, but
+ * nothing in this app currently parses an incoming `winterarc://` URL.
  */
 export default function AuthScreen() {
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const canSend = email.includes('@') && !sending;
+
+  async function handleSend() {
+    if (!canSend || !supabase) return;
+    setSending(true);
+    setError(null);
+    const { error: signInError } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: 'winterarc://auth/callback' },
+    });
+    setSending(false);
+    if (signInError) {
+      setError(signInError.message);
+      return;
+    }
+    setSent(true);
+  }
 
   return (
     <Surface variant="void" style={styles.root}>
@@ -25,7 +51,11 @@ export default function AuthScreen() {
           WINTER ARC
         </Text>
 
-        {sent ? (
+        {!isSupabaseConfigured ? (
+          <Text variant="body" color="blood" style={styles.sentMessage}>
+            Sign-in isn't configured yet.
+          </Text>
+        ) : sent ? (
           <Text variant="body" color="ghost" style={styles.sentMessage}>
             Check {email} for your link.
           </Text>
@@ -41,12 +71,22 @@ export default function AuthScreen() {
               autoCorrect={false}
               style={styles.input}
             />
+            {error ? (
+              <Text variant="body" color="blood" style={styles.sentMessage}>
+                {error}
+              </Text>
+            ) : null}
             <Pressable
-              onPress={() => email.includes('@') && setSent(true)}
-              style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+              onPress={handleSend}
+              disabled={!canSend}
+              style={({ pressed }) => [
+                styles.button,
+                !canSend && styles.buttonDisabled,
+                pressed && canSend && styles.buttonPressed,
+              ]}
             >
-              <Text variant="label" color="void">
-                SEND LINK
+              <Text variant="label" color={canSend ? 'void' : 'fog'}>
+                {sending ? 'SENDING…' : 'SEND LINK'}
               </Text>
             </Pressable>
           </>
@@ -75,6 +115,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 2,
   },
+  buttonDisabled: { backgroundColor: frost.graphite },
   buttonPressed: { backgroundColor: frost.glacier },
   sentMessage: { textAlign: 'center' },
 });

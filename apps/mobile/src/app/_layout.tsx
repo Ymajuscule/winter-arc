@@ -1,4 +1,5 @@
 import { useAppFonts } from '@/hooks/use-app-fonts';
+import { initSessionListener } from '@/stores/session-store';
 import { frost } from '@winterarc/ui-primitives';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -6,6 +7,7 @@ import { useEffect } from 'react';
 import { StatusBar } from 'react-native';
 
 SplashScreen.preventAutoHideAsync();
+initSessionListener();
 
 /**
  * Root layout — dark-only theme lock (CLAUDE.md §12: "dark cinematic, not
