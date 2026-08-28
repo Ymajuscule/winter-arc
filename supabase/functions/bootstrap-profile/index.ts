@@ -61,7 +61,6 @@ Deno.serve(async (req: Request) => {
   if (!user) return jsonResponse({ error: 'Unauthorized' }, 401);
 
   const body = (await req.json()) as BootstrapProfileBody;
-  if (!body.username) return jsonResponse({ error: 'username is required' }, 400);
 
   const db = supabaseAdmin();
 
@@ -74,6 +73,12 @@ Deno.serve(async (req: Request) => {
   let profile = existingProfile;
 
   if (!profile) {
+    // Only required for first-ever creation — a returning user re-authenticating
+    // from a new device (splash "Sign In", lib/auth-deep-link.ts) has no
+    // onboarding answers to send and doesn't need any; every field below is
+    // ignored once a profile already exists.
+    if (!body.username) return jsonResponse({ error: 'username is required' }, 400);
+
     const { data: created, error: profileError } = await db
       .from('profiles')
       .insert({

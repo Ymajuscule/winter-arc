@@ -12,13 +12,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
  *
  * Real `signInWithOtp` call (2026-08-28, continuation 4 — Supabase is
  * linked now). `emailRedirectTo` uses the app's own scheme (`winterarc://`,
- * app.json) so the magic link reopens the app instead of a browser — but
- * that URL still needs registering in the Supabase dashboard's Auth ->
- * URL Configuration -> Redirect URLs (not settable via the MCP tools this
- * session has). Landing back in the app from the link and exchanging it
- * for a session (`supabase.auth` deep-link handling) isn't wired yet
- * either — session-store.ts picks up the session once one exists, but
- * nothing in this app currently parses an incoming `winterarc://` URL.
+ * app.json) so the magic link reopens the app instead of a browser. Landing
+ * back in the app and exchanging the link for a session is now handled too
+ * (2026-08-28, continuation 6 — `lib/auth-deep-link.ts`, wired from the root
+ * layout): it fetches the returning user's real profile via
+ * `bootstrap-profile` and jumps straight to the dashboard, no re-onboarding.
+ * `session-store.ts`'s `onAuthStateChange` listener picks up the session
+ * itself, this screen doesn't need to know any of that happened.
+ *
+ * Still needed from Julien: the `winterarc://` redirect URL must be
+ * registered in the Supabase dashboard's Auth -> URL Configuration ->
+ * Redirect URLs — not settable via this session's tools.
  */
 export default function AuthScreen() {
   const [email, setEmail] = useState('');

@@ -235,6 +235,12 @@ export const useAppStore = create<AppState>()(
         const currencyRow = response.currency as Record<string, unknown>;
         const streakRow = response.streak as Record<string, unknown>;
         const arcRow = response.arc as Record<string, unknown>;
+        // The server's own value wins when present — matters for a returning
+        // user re-authenticating on a fresh device (lib/auth-deep-link.ts),
+        // which has no real onboarding-collected `difficulty` to pass in and
+        // falls back to a placeholder. Right after onboarding's own
+        // bootstrap-profile call, the two already agree.
+        const resolvedDifficulty = (profileRow.difficulty as Difficulty | undefined) ?? difficulty;
 
         set({
           onboarded: true,
@@ -244,7 +250,7 @@ export const useAppStore = create<AppState>()(
             avatarId: (profileRow.avatar_id as string | null) ?? null,
             paletteId,
             classId: (profileRow.current_class_id as ClassId | null) ?? null,
-            difficulty,
+            difficulty: resolvedDifficulty,
             title: 'The Awakened',
           },
           arc: {
@@ -252,7 +258,7 @@ export const useAppStore = create<AppState>()(
             name: arcRow.name as string,
             startsOn: arcRow.starts_on as string,
             endsOn: arcRow.ends_on as string,
-            difficulty: (arcRow.difficulty as Difficulty) ?? difficulty,
+            difficulty: (arcRow.difficulty as Difficulty) ?? resolvedDifficulty,
             status: (arcRow.status as AppArc['status']) ?? 'active',
           },
           totalXp: (profileRow.total_xp as number) ?? 0,
