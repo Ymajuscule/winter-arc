@@ -11,8 +11,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
  * `emailRedirectTo`/`redirectTo`). Expo Router routes the deep link here by
  * file-based convention, handling cold-start and warm-start alike, no
  * separate `Linking` listener needed. `lib/auth-flow.ts` has the real logic
- * (exchange the code, bootstrap the returning user's profile); this screen
- * is just the loading/error states around that one async call.
+ * (exchange the code, then route by whether the account already has a
+ * profile); this screen is just the loading/error states around that one
+ * async call.
+ *
+ * Password recovery deliberately does NOT land here — it has its own route
+ * (`app/auth/reset.tsx`), because an exchanged session carries no marker
+ * saying it came from a recovery email, and this screen would happily sign
+ * the user in without ever letting them set the password they forgot.
  */
 export default function AuthCallbackScreen() {
   const router = useRouter();
@@ -28,7 +34,10 @@ export default function AuthCallbackScreen() {
     completeCodeSignIn(code).then((result) => {
       if (cancelled) return;
       if (result.ok) {
-        router.replace('/dashboard');
+        // Not always the dashboard: a first-time Google or magic-link
+        // account has no profile yet and belongs in onboarding, which is
+        // what actually creates one (lib/auth-flow.ts's resolvePostSignIn).
+        router.replace(result.destination);
       } else {
         setError(result.message);
       }

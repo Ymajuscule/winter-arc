@@ -100,6 +100,8 @@ interface AppState {
     input: { paletteId: PaletteId; difficulty: Difficulty },
   ) => void;
   completeHabit: (habitId: string) => Promise<void>;
+  /** Clears every trace of the signed-in account — see lib/auth-flow.ts's signOutCompletely. */
+  resetAccount: () => void;
   acknowledgeLevelUp: () => void;
   claimDailyReward: () => void;
   enqueueAchievementUnlocks: (ids: string[], xpAwarded: number, coinsAwarded: number) => void;
@@ -182,23 +184,33 @@ function computeLocalCompletion(state: AppState, habit: AppHabit) {
   return { xpAwarded, coinsAwarded: 2, newTotalXp, levelProgress, streakOutcome, previousLevel };
 }
 
+/**
+ * The blank slate. Named rather than inlined because `resetAccount` has to
+ * restore exactly this on sign-out — a hand-maintained second copy would
+ * drift the first time a field is added, and the field it forgot would leak
+ * the previous account's data to whoever signs in next on the device.
+ */
+const emptyAccountState = {
+  onboarded: false,
+  isCloudSynced: false,
+  profile: initialProfile,
+  arc: null,
+  totalXp: 0,
+  lifetimeXp: 0,
+  coins: 0,
+  habits: [] as AppHabit[],
+  streak: freshStreak,
+  xpEarnedToday: 0,
+  lastXpEvent: { amount: 0, trigger: 0 },
+  lastLevelUp: 0,
+  dailyRewardClaimedOn: null,
+  pendingAchievementIds: [] as string[],
+};
+
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
-      onboarded: false,
-      isCloudSynced: false,
-      profile: initialProfile,
-      arc: null,
-      totalXp: 0,
-      lifetimeXp: 0,
-      coins: 0,
-      habits: [],
-      streak: freshStreak,
-      xpEarnedToday: 0,
-      lastXpEvent: { amount: 0, trigger: 0 },
-      lastLevelUp: 0,
-      dailyRewardClaimedOn: null,
-      pendingAchievementIds: [],
+      ...emptyAccountState,
 
       initializeFromOnboarding: ({
         username,
@@ -369,6 +381,8 @@ export const useAppStore = create<AppState>()(
         const state = get();
         set({ pendingAchievementIds: state.pendingAchievementIds.slice(1) });
       },
+
+      resetAccount: () => set({ ...emptyAccountState }),
     }),
     {
       name: 'winter-arc-app',
