@@ -11,4 +11,5 @@ export * from './Nameplate';
 export * from './Emblem';
 export * from './Sigil';
 export * from './XPOrb';
+export * from './StatRadar';
 export * from './icons/index';

@@ -129,18 +129,23 @@ export default function DashboardScreen() {
     <Surface variant="void" style={styles.root}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
         <ScrollView contentContainerStyle={styles.scroll}>
-          <Nameplate
-            username={profile.username}
-            level={levelProgress.level}
-            title={profile.title ?? undefined}
-            avatar={
-              <Frame tier="iron" size={44}>
-                <Text variant="title" color="bone">
-                  {profile.username.charAt(0).toUpperCase()}
-                </Text>
-              </Frame>
-            }
-          />
+          {/* The nameplate is the way into the profile — CDC §14's header
+              zone is the identity block, so tapping it going anywhere else
+              would be a second, redundant nav affordance. */}
+          <Pressable onPress={() => router.push('/profile')} accessibilityRole="button">
+            <Nameplate
+              username={profile.username}
+              level={levelProgress.level}
+              title={profile.title ?? undefined}
+              avatar={
+                <Frame tier="iron" size={44}>
+                  <Text variant="title" color="bone">
+                    {profile.username.charAt(0).toUpperCase()}
+                  </Text>
+                </Frame>
+              }
+            />
+          </Pressable>
           <View style={styles.headerMeta}>
             <XPBar
               progress={

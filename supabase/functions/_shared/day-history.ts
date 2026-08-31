@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-explicit-any
 // @ts-nocheck -- Deno Edge Function module, not resolved by the repo's Node/tsc typecheck.
 /**
  * The habit-day queries `award-habit-xp` and `advance-streak` both need to
@@ -13,13 +12,17 @@
  * only the Supabase reads that feed it.
  */
 import { type HabitDayLog, dayCompletionPct } from '../../../packages/game-engine/src/streaks.ts';
+import type { supabaseAdmin } from './supabase-admin.ts';
+
+/** The service-role client the caller already holds — passed in rather than rebuilt per helper. */
+type Db = ReturnType<typeof supabaseAdmin>;
 
 /**
  * The habits that count toward a day's completion rate: active and not
  * paused. A paused habit (CDC §37 vacation mode) must not drag the rate down
  * — that's the whole point of pausing it.
  */
-export async function fetchActiveHabitIds(db: any, userId: string): Promise<string[]> {
+export async function fetchActiveHabitIds(db: Db, userId: string): Promise<string[]> {
   const { data } = await db
     .from('habits')
     .select('id')
@@ -31,7 +34,7 @@ export async function fetchActiveHabitIds(db: any, userId: string): Promise<stri
 
 /** One day's habit logs, in the shape `game-engine` expects. */
 export async function fetchDayLogs(
-  db: any,
+  db: Db,
   userId: string,
   loggedFor: string,
 ): Promise<HabitDayLog[]> {
@@ -58,7 +61,7 @@ export async function fetchDayLogs(
  * than granting one that wasn't earned.
  */
 export async function countActiveDays(
-  db: any,
+  db: Db,
   userId: string,
   activeHabitIds: readonly string[],
   fromInclusive: string,
