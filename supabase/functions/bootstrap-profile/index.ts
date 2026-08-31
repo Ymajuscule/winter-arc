@@ -34,7 +34,18 @@
  * hors arc" case the schema also supports for later-added habits. Full Arc
  * *lifecycle* (pause/complete/vacation mode, CDC §37) is still unbuilt —
  * this only covers creation.
+ *
+ * Second real gap, found 2026-08-31 while building the profile radar: the
+ * habit insert below wrote `category` but left `linked_stats` at its `'[]'`
+ * default, so `game-engine/stats.ts` — the entire 7-stat computation — had
+ * nothing to read and every stat scored 0 for every user regardless of how
+ * much they logged. It now derives the linked stats from the category via
+ * `linkedStatsForCategory` (CDC §26's "Alimentée par" column). Habits
+ * created before this fix keep their empty array; a backfill is a one-line
+ * UPDATE per category and belongs with whatever habit-management screen
+ * lands first, not here.
  */
+import { linkedStatsForCategory } from '../../../packages/game-engine/src/stats.ts';
 import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
 import { getUserFromRequest, supabaseAdmin } from '../_shared/supabase-admin.ts';
 
@@ -181,6 +192,7 @@ Deno.serve(async (req: Request) => {
           type: 'boolean',
           difficulty: 'medium',
           xp_value: DEFAULT_HABIT_XP,
+          linked_stats: linkedStatsForCategory(h.category),
         })),
       )
       .select();

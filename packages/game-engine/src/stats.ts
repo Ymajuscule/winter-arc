@@ -101,3 +101,113 @@ export function applyStatDecay(value: number, daysSinceLastContribution: number)
   const decay = decayableDays * STAT_DECAY_MAX_PER_DAY;
   return Math.max(0, Math.round(value - decay));
 }
+
+// ---------------------------------------------------------------------------
+// Category -> stat mapping
+// ---------------------------------------------------------------------------
+
+/**
+ * Which stats a habit feeds, derived from its category — CDC §26's
+ * "Alimentée par" column, turned into weights.
+ *
+ * This exists because `habits.linked_stats` was never populated: onboarding
+ * collects a domain per habit and `bootstrap-profile` wrote the category
+ * through but left `linked_stats` at its `'[]'` default, so every stat scored
+ * 0 for every user no matter how much they logged. The catalog keys are the
+ * 12 onboarding domain ids (`onboarding-content.ts`'s DOMAINS), which is what
+ * `habits.category` actually holds.
+ *
+ * Weights are relative, not absolute: 1.0 is "this is what the habit is for",
+ * 0.3-0.5 is "this benefits too". They only need to be consistent with each
+ * other — `statScoreFromRawPoints` maps the accumulated total onto 0-100.
+ * The CDC gives the direction of each arrow but no magnitudes, so these are
+ * decided here (CLAUDE.md §8 category 2) and are safe to retune later:
+ * nothing persists a raw score, every stat is recomputed from `habit_logs`.
+ *
+ * Note the absence of `consistency` — see `consistencyScore` below.
+ */
+export const LINKED_STATS_BY_CATEGORY: Record<string, readonly LinkedStat[]> = {
+  fitness: [
+    { stat: 'strength', weight: 1 },
+    { stat: 'energy', weight: 0.4 },
+    { stat: 'discipline', weight: 0.2 },
+  ],
+  mind: [
+    { stat: 'focus', weight: 0.8 },
+    { stat: 'discipline', weight: 0.4 },
+  ],
+  knowledge: [
+    { stat: 'knowledge', weight: 1 },
+    { stat: 'focus', weight: 0.3 },
+  ],
+  career: [
+    { stat: 'knowledge', weight: 0.5 },
+    { stat: 'focus', weight: 0.5 },
+    { stat: 'discipline', weight: 0.3 },
+  ],
+  finance: [
+    { stat: 'discipline', weight: 0.8 },
+    { stat: 'knowledge', weight: 0.3 },
+  ],
+  sleep: [
+    { stat: 'health', weight: 0.8 },
+    { stat: 'energy', weight: 0.8 },
+  ],
+  nutrition: [
+    { stat: 'health', weight: 1 },
+    { stat: 'energy', weight: 0.4 },
+  ],
+  energy: [
+    { stat: 'energy', weight: 1 },
+    { stat: 'health', weight: 0.3 },
+  ],
+  digital: [
+    { stat: 'discipline', weight: 0.8 },
+    { stat: 'focus', weight: 0.6 },
+  ],
+  mental: [
+    { stat: 'health', weight: 0.5 },
+    { stat: 'focus', weight: 0.5 },
+    { stat: 'energy', weight: 0.3 },
+  ],
+  creativity: [
+    { stat: 'knowledge', weight: 0.4 },
+    { stat: 'focus', weight: 0.4 },
+  ],
+  relationships: [
+    { stat: 'health', weight: 0.4 },
+    { stat: 'energy', weight: 0.3 },
+  ],
+};
+
+/**
+ * Fallback for a category outside the catalog — a habit the user typed
+ * themselves, or a category added to onboarding before this map. It still
+ * feeds `discipline`, because showing up for something you chose is the one
+ * thing every habit has in common. Never returns an empty list: a habit that
+ * feeds nothing is invisible on the radar, which reads as a bug to the user.
+ */
+export const DEFAULT_LINKED_STATS: readonly LinkedStat[] = [{ stat: 'discipline', weight: 0.5 }];
+
+export function linkedStatsForCategory(category: string): readonly LinkedStat[] {
+  return LINKED_STATS_BY_CATEGORY[category] ?? DEFAULT_LINKED_STATS;
+}
+
+/**
+ * Consistency is the one stat CDC §26 doesn't feed from a habit category —
+ * its source column reads "streaks longs, absence d'échecs". So it has no
+ * entry in the catalog above and is computed from the streak instead, on the
+ * same saturating curve as every other stat so all seven axes of the radar
+ * stay comparable.
+ *
+ * The longest streak keeps contributing after it breaks, on purpose: CDC §26
+ * is explicit that stats stagnate on failure rather than dropping. A user who
+ * held 60 days and lost it keeps most of the consistency they built.
+ */
+export function consistencyScore(input: {
+  currentStreak: number;
+  longestStreak: number;
+}): number {
+  const raw = Math.max(0, input.currentStreak) + Math.max(0, input.longestStreak) * 0.5;
+  return statScoreFromRawPoints(raw);
+}
