@@ -49,3 +49,6 @@ credentials.json
 
 # generated deploy bundles (scripts/package-edge-functions.mjs)
 supabase/.deploy/
+
+# throwaway Postgres from scripts/verify-migrations.sh
+/var/tmp/winter-arc-verify-pg/

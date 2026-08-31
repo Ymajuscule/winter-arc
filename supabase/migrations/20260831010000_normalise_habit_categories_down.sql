@@ -9,6 +9,13 @@
 --
 -- Restoring labels re-breaks class synergy and the stat radar by design: this
 -- rollback exists to undo a migration, not to be a supported state.
+--
+-- One known lossiness, confirmed by scripts/verify-migrations.sh: the up
+-- migration lowercases categories outside the 12 domains (a habit the user
+-- named themselves, previously written as 'Custom'), and nothing records the
+-- original casing, so those come back lowercased. The value is still the
+-- user's own string and nothing matches on it, so this costs nothing but is
+-- worth stating rather than discovering.
 
 update public.habits
 set category = case category
