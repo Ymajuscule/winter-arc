@@ -5,6 +5,60 @@
 
 ---
 
+## Session 2026-08-31 (ad-hoc — Julien: "regarde où on en est puis continue là où le projet en est", then "setup un login & un register avec google & mail")
+
+### Done
+
+**First actual visual verification in this project's history.** Every prior session shipped typecheck+lint-verified UI it had never seen render — the standing `[!]` blocker. `expo start --web` runs fine here: the old failure was Windows MAX_PATH friction against a deep scratchpad path, not the repo. Drove the whole app with Playwright/Chromium (Chromium is pre-installed in this container): splash → all 13 onboarding screens → dashboard → habit completion → profile → sign-out, **zero console errors**. Screenshots at each step. That run is what found the two category-vocabulary bugs below; nothing in `tsc` or Biome could have.
+
+**Three real bugs, all silent, all hitting every user:**
+
+1. **Streaks never advanced.** `award-habit-xp` assigned the `streaks` row (snake_case) straight into a `StreakState` (camelCase), so every field read `undefined`, `currentCount + 1` evaluated to NaN, and the upsert wrote that back — with its error unchecked. `bootstrap-profile` creates that row for every account, so the row always existed and the bug always fired. `advance-streak` had always mapped it explicitly; the two writers of the same row simply disagreed.
+2. **One habit passed for a whole day.** `advanceStreak` was handed *this habit's* completion percentage as the day's rate, so completing one habit out of ten satisfied even `extreme`'s 95% threshold. `advance-streak` had the milder version — it averaged over the habits that had a log, ignoring the ones that didn't. Both now go through `dayCompletionPct` (new, unit-tested) over the user's active habits, via a shared `_shared/day-history.ts`.
+3. **Three vocabularies for one value.** Onboarding persisted a domain's *display label* ("Fitness", "Digital Discipline") as `habits.category`; `classes.ts`'s `focusCategories` held *stat names* ('Focus', 'Discipline', 'Health'); the new stat catalog keyed on *domain ids*. Consequence: the Monk's and Ranger's +15% Class Synergy could never fire on any habit ever, and the 7-stat radar collapsed onto Discipline no matter what the user did. `CATEGORY_IDS` is now the single vocabulary, with two tests locking the three sources together.
+
+**Features shipped:**
+
+- **`packages/ui-primitives`**: `StatRadar` (SVG heptagon — hairline rings and spokes at the shared `border.color`, flat 14% accent fill, no legend, no tooltip, grows from the centre once over `motion.duration.hero` with out-expo) and `StatBar` for CDC §28's detail list. Deliberately not reusing `XPBar`, which carries XP's cosmetic variants (CDC §59) — sharing it would let an XP cosmetic restyle the stats page.
+- **`app/profile.tsx`** — the app had no profile screen at all. Nameplate, level, radar, seven bars, record figures, identity, sign-out. Reached by tapping the dashboard nameplate, since CDC §14's header zone is already the identity block.
+- **`hooks/use-stats.ts`** — real `habit_logs` history with per-stat decay when signed in, today's local completions in demo mode. Falls back to the category when `linked_stats` is still empty, so the radar is right whether or not the backfill migration has run.
+- **`linked_stats` finally populated.** `bootstrap-profile` wrote `category` and left the column at `'[]'`, so `stats.ts` — shipped and tested on 2026-08-28 — had read an empty contribution list for every habit since the day it landed.
+- **Real registration.** Every sign-in method funnelled into `bootstrapAndEnterDashboard`, which for a *new* account created a profile named "wanderer" with no class, avatar or habits and dropped the user on an empty dashboard with onboarding permanently skipped. `resolvePostSignIn` now probes `profiles` and routes: existing → dashboard with the real profile, new → onboarding, which is what actually calls `bootstrap-profile` with real data. `auth/callback.tsx` follows the same routing, so first-time Google and magic-link users land there too.
+- **`auth.tsx` rebuilt** with explicit SIGN IN / REGISTER modes (they fail differently; a screen that hides which one has to word both errors vaguely), password recovery on its own `/auth/reset` route, and Google completing on web as well as native.
+- **Sign-out**, which existed nowhere. Clears both stores, not just the session — `app-store` is MMKV-persisted, so leaving it showed the previous user's level, habits and streak to whoever signed in next on the device. Confirm is inline rather than `Alert.alert`: an OS dialog is the one piece of chrome the app can't style, and for a demo-mode user the button really does destroy their only copy of the arc.
+- Closed four gaps `award-habit-xp`'s header had been carrying: `active_boosts` is finally queried (CDC §25), `isPerfectDay` is real, `freezesUsedThisMonth` and `wasActiveSixOfLastSeven` both compute. Fixed an off-by-one while sharing the last one — `advance-streak`'s window was 6 days wide, so "6 of the last 7" demanded all 6.
+
+### Verification
+
+- 96/96 unit tests (was 71 at session start), typecheck and Biome clean across all 4 packages after every commit.
+- `deno check` on `award-habit-xp`, `advance-streak`, `bootstrap-profile`, with `@ts-nocheck` stripped in a sandbox copy (never the repo).
+- Chromium against the running dev server for every UI change, including the auth screens with a throwaway `.env` pointing at an unresolvable host (deleted afterwards; never touched the live project) to exercise validation and error paths.
+- Lint was **red at session start** — four files the previous auth pass left unformatted. Fixed first, before anything else.
+
+### Blockers
+
+_(none)_
+
+### Decisions needed from Julien
+
+- **DECISION-NEEDED (action, unchanged and still blocking Google end-to-end)**: in the Supabase dashboard, register `winterarc://auth/callback` **and** `winterarc://auth/reset` under Auth → URL Configuration → Redirect URLs, and wire a Google OAuth client (Google Cloud Console) into Auth → Providers → Google. Without the second, the Google button surfaces a provider-not-enabled error rather than signing anyone in — it can't be exercised from an agent session either way.
+- **DECISION-NEEDED (action)**: two new migrations to apply, both with rollbacks — `20260831000000_backfill_habit_linked_stats` and `20260831010000_normalise_habit_categories`. The second also fixes the seeded `hundred-workouts` achievement, whose condition matched `"Fitness"` and could never have progressed.
+- Still outstanding from 2026-08-28: the `CRON_SECRET` Edge Function secret.
+- Note: the three Edge Functions touched here (`award-habit-xp`, `advance-streak`, `bootstrap-profile`) all need **redeploying** — the streak bug in particular means the deployed version is still writing NaN.
+
+### Metrics
+- Commits: 6. Tests: 96/96 (+25). Migrations: 2 (+2 rollbacks). New screens: 2 (`profile`, `auth/reset`). New primitives: 2.
+- Branch: `claude/winter-arc-progress-5q4d9d` (harness-designated; the `night/YYYY-MM-DD-N` convention in CLAUDE.md §2 was overridden by this session's branch instruction).
+
+### Next session should
+- Redeploy the three touched Edge Functions and apply the two migrations, then re-verify a real habit completion actually advances a streak against the live project.
+- Cosmetics equip flow — the catalog is seeded and the profile screen displays the equipped identity, but nothing can change it. Needs an `equip-cosmetic` Edge Function.
+- Streak Freeze / Recovery Day / Comeback experience: the engine has `isWithinComebackWindow` and freeze handling, but `isComebackStreak` is still hard-coded false in `award-habit-xp` because `streaks` has no column recording when a broken streak restarted.
+- Habit input UIs for the non-boolean types (numeric/duration/counter/distance) — `award-habit-xp` already accepts `value`, nothing sends one.
+- Apple sign-in, the one part of CDC §107's list still unbuilt.
+
+---
+
 ## Session 2026-08-28 (continuation 5, ad-hoc, same conversation as continuation 4 — Julien asked to actually wire the mobile app to the now-live backend rather than stop at "credentials configured")
 
 ### Done
