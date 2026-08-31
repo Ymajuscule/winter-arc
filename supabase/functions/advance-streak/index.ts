@@ -29,21 +29,26 @@
  */
 import {
   type Difficulty,
+  FREEZES_PER_MONTH_DEFAULT,
   STREAK_THRESHOLD_BY_DIFFICULTY,
   type StreakState,
   advanceStreak,
+  dayCompletionPct,
+  isSameCalendarMonth,
   milestoneReachedAt,
 } from '../../../packages/game-engine/src/streaks.ts';
 import { levelFromTotalXp } from '../../../packages/game-engine/src/xp.ts';
 import { jsonResponse } from '../_shared/cors.ts';
+import {
+  countActiveDays,
+  fetchActiveHabitIds,
+  fetchDayLogs,
+  isoDateBefore,
+} from '../_shared/day-history.ts';
 import { supabaseAdmin } from '../_shared/supabase-admin.ts';
 
 function isoDateDaysAgo(days: number): string {
   return new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
-}
-
-function isSameCalendarMonth(a: string, b: string): boolean {
-  return a.slice(0, 7) === b.slice(0, 7);
 }
 
 Deno.serve(async (req: Request) => {
@@ -55,7 +60,11 @@ Deno.serve(async (req: Request) => {
 
   const db = supabaseAdmin();
   const yesterday = isoDateDaysAgo(1);
-  const sevenDaysAgo = isoDateDaysAgo(8); // exclusive lower bound for the "6 of last 7 days" window ending yesterday
+  // Inclusive lower bound of the "6 of the last 7 days" window ending at
+  // (but excluding) `yesterday` — i.e. exactly 7 days. The previous bound was
+  // an exclusive `isoDateDaysAgo(8)`, which made the window 6 days wide and
+  // so demanded all 6 of them, not 6 of 7.
+  const windowStart = isoDateBefore(yesterday, 7);
 
   const { data: streakRows } = await db
     .from('streaks')
@@ -78,35 +87,25 @@ Deno.serve(async (req: Request) => {
 
     const threshold = STREAK_THRESHOLD_BY_DIFFICULTY[profile.difficulty as Difficulty];
 
-    const { data: yesterdaysLogs } = await db
-      .from('habit_logs')
-      .select('completion_pct')
-      .eq('user_id', streakRow.user_id)
-      .eq('logged_for', yesterday);
-    const completionPct =
-      yesterdaysLogs && yesterdaysLogs.length > 0
-        ? Math.round(
-            yesterdaysLogs.reduce((sum, log) => sum + (log.completion_pct as number), 0) /
-              yesterdaysLogs.length,
-          )
-        : 0;
+    // Yesterday's rate over every *active* habit — an unlogged habit counts as
+    // 0. This used to average over only the habits that had a log, which meant
+    // a user who logged one habit out of ten scored 100% for the day and held
+    // an `extreme` streak on it. Shared with award-habit-xp so both writers of
+    // this row agree on what a completed day is.
+    const activeHabitIds = await fetchActiveHabitIds(db, streakRow.user_id);
+    const completionPct = dayCompletionPct(
+      activeHabitIds,
+      await fetchDayLogs(db, streakRow.user_id, yesterday),
+    );
 
-    const { data: recentLogs } = await db
-      .from('habit_logs')
-      .select('logged_for, completion_pct')
-      .eq('user_id', streakRow.user_id)
-      .gt('logged_for', sevenDaysAgo)
-      .lt('logged_for', yesterday);
-    const pctByDay: Record<string, number[]> = {};
-    for (const log of recentLogs ?? []) {
-      const day = log.logged_for as string;
-      if (!pctByDay[day]) pctByDay[day] = [];
-      pctByDay[day].push(log.completion_pct as number);
-    }
-    const activeDaysCount = Object.values(pctByDay).filter((pcts) => {
-      const avg = pcts.reduce((sum, pct) => sum + pct, 0) / pcts.length;
-      return avg >= threshold;
-    }).length;
+    const activeDaysCount = await countActiveDays(
+      db,
+      streakRow.user_id,
+      activeHabitIds,
+      windowStart,
+      yesterday,
+      threshold,
+    );
 
     const state: StreakState = {
       currentCount: streakRow.current_count,
@@ -120,7 +119,7 @@ Deno.serve(async (req: Request) => {
       today: yesterday,
       completionPct,
       requiredThreshold: threshold,
-      freezesAllowedThisMonth: 1, // TODO: +1 with the Anchor skill (user_skills) — see file header
+      freezesAllowedThisMonth: FREEZES_PER_MONTH_DEFAULT, // TODO: +1 with the Anchor skill (user_skills) — see file header
       freezesUsedThisMonth:
         streakRow.freeze_used_on && isSameCalendarMonth(streakRow.freeze_used_on, yesterday)
           ? 1

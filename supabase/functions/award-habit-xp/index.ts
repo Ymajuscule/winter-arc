@@ -7,21 +7,31 @@
  * / streaks / profiles.level for this action (CDC §127 — mobile never
  * computes official XP).
  *
+ * Two real bugs fixed here on 2026-08-31, both silent:
+ * - The `streaks` row (snake_case) was assigned straight into a `StreakState`
+ *   (camelCase), so every field read `undefined` and the streak count went to
+ *   NaN on the first completion. bootstrap-profile creates that row for every
+ *   user, so this hit everyone — see the mapping's own comment below.
+ * - `advanceStreak` was given *this habit's* completion percentage as the
+ *   whole day's rate, so completing one habit out of ten held even an
+ *   `extreme` (95%) streak. It now gets `dayCompletionPct` over the user's
+ *   active habits (game-engine), matching what that input documents.
+ *
  * Known gaps, intentionally not guessed at:
- * - isPerfectDay (CDC §19) needs "did every active habit get logged today",
- *   which means querying all of today's habits, not just this one. Hard-coded
- *   false until that query is written.
- * - hasXpElixir / hasXpFeast (CDC §25): active_boosts table now exists
- *   (20260828010000_active_boosts.sql) but isn't queried here yet — next
- *   pass. Still hard-coded false.
  * - isSeasonEvent (CDC §102) needs a "current event" concept beyond the
  *   `seasons` table (which only models Battle Pass seasons, not sub-events).
  *   Hard-coded false.
+ * - isComebackStreak (CDC §43) needs to know when a broken streak was
+ *   restarted; `streaks` has no such column yet. Hard-coded false — the
+ *   Comeback experience is its own open Phase 1 item in TODO.md.
  * - isEarlyBird uses UTC hour < 9 as a placeholder for "before 9am local" —
  *   there's no user timezone stored yet (CDC doesn't specify where it'd live).
- * - Streak threshold now reads profiles.difficulty via
- *   STREAK_THRESHOLD_BY_DIFFICULTY (game-engine/streaks.ts) instead of a
- *   hard-coded 60 — closes a gap this file used to flag directly.
+ * - freezesAllowedThisMonth is the flat default; the Anchor skill's +1
+ *   (CDC §22) needs a user_skills read, same TODO advance-streak carries.
+ *
+ * Closed since the last pass: isPerfectDay and hasXpElixir/hasXpFeast are
+ * both real now (the day's logs and the `active_boosts` table respectively),
+ * as are freezesUsedThisMonth and wasActiveSixOfLastSeven.
  *
  * Wrapped in withIdempotency (2026-08-28) — a retried network call with the
  * same Idempotency-Key header replays the cached result instead of
@@ -42,9 +52,13 @@ import { type ClassId, classSynergyBonus } from '../../../packages/game-engine/s
 import { calculateXpMultiplier } from '../../../packages/game-engine/src/multipliers.ts';
 import {
   type Difficulty,
+  FREEZES_PER_MONTH_DEFAULT,
   STREAK_THRESHOLD_BY_DIFFICULTY,
   type StreakState,
   advanceStreak,
+  dayCompletionPct,
+  isPerfectDay,
+  isSameCalendarMonth,
 } from '../../../packages/game-engine/src/streaks.ts';
 import {
   DAILY_XP_CAP,
@@ -52,6 +66,12 @@ import {
   levelFromTotalXp,
 } from '../../../packages/game-engine/src/xp.ts';
 import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
+import {
+  countActiveDays,
+  fetchActiveHabitIds,
+  fetchDayLogs,
+  isoDateBefore,
+} from '../_shared/day-history.ts';
 import { evaluateAndUnlockAchievements } from '../_shared/evaluate-achievements.ts';
 import { withIdempotency } from '../_shared/idempotency.ts';
 import { getUserFromRequest, supabaseAdmin } from '../_shared/supabase-admin.ts';
@@ -114,12 +134,43 @@ Deno.serve(async (req: Request) => {
       .is('scope_ref', null)
       .maybeSingle();
 
-    const streakState: StreakState = streakRow ?? {
-      currentCount: 0,
-      longestCount: 0,
-      lastCompletedOn: null,
-      freezeUsedOn: null,
-    };
+    // `streaks` is snake_case, StreakState is camelCase. Assigning the row
+    // straight across (as this did until 2026-08-31) left every field
+    // `undefined`, so `state.currentCount + 1` evaluated to NaN and the upsert
+    // below wrote that back — silently, since its error was never checked.
+    // bootstrap-profile creates this row for every user, so the row always
+    // existed and the streak never advanced for anyone. advance-streak had
+    // always mapped it explicitly; this now matches.
+    const streakState: StreakState = streakRow
+      ? {
+          currentCount: streakRow.current_count,
+          longestCount: streakRow.longest_count,
+          lastCompletedOn: streakRow.last_completed_on,
+          freezeUsedOn: streakRow.freeze_used_on,
+        }
+      : { currentCount: 0, longestCount: 0, lastCompletedOn: null, freezeUsedOn: null };
+
+    // --- The whole day, not just this habit ---------------------------------
+    // The multiplier's Perfect Day bonus and the streak's threshold are both
+    // about the day as a whole. This completion isn't inserted yet, so fold it
+    // in by hand — the numbers should describe the state the user lands in.
+    const activeHabitIds = await fetchActiveHabitIds(db, user.id);
+    const dayLogs = [
+      ...(await fetchDayLogs(db, user.id, body.loggedFor)),
+      { habitId: habit.id as string, completionPct },
+    ];
+    const dayPct = dayCompletionPct(activeHabitIds, dayLogs);
+    const perfectDay = isPerfectDay(activeHabitIds, dayLogs);
+
+    // Active XP boosts — CDC §25. The active_boosts table has existed since
+    // migration 20260828010000; nothing read it until now.
+    const { data: boosts } = await db
+      .from('active_boosts')
+      .select('type')
+      .eq('user_id', user.id)
+      .gt('expires_at', new Date().toISOString());
+    const hasXpElixir = (boosts ?? []).some((b: { type: string }) => b.type === 'xp_elixir');
+    const hasXpFeast = (boosts ?? []).some((b: { type: string }) => b.type === 'xp_feast');
 
     const now = new Date();
     const isWeekend = now.getUTCDay() === 0 || now.getUTCDay() === 6;
@@ -127,14 +178,14 @@ Deno.serve(async (req: Request) => {
 
     const multiplier = calculateXpMultiplier({
       streakDays: streakState.currentCount,
-      isPerfectDay: false, // gap, see file header
+      isPerfectDay: perfectDay,
       isClassSynergy: profile.current_class_id
         ? classSynergyBonus(profile.current_class_id as ClassId, habit.category) > 0
         : false,
       isEarlyBird,
       isWeekend,
-      hasXpElixir: false, // gap, see file header
-      hasXpFeast: false, // gap, see file header
+      hasXpElixir,
+      hasXpFeast,
       isSeasonEvent: false, // gap, see file header
       isComebackStreak: false, // gap, see file header
     });
@@ -199,25 +250,49 @@ Deno.serve(async (req: Request) => {
         .eq('user_id', user.id);
     }
 
+    const requiredThreshold = STREAK_THRESHOLD_BY_DIFFICULTY[profile.difficulty as Difficulty];
+    // CDC §42's automatic freeze needs "active on 6 of the 7 days before
+    // today" — the same window and the same per-day rule advance-streak uses.
+    const activeDaysBefore = await countActiveDays(
+      db,
+      user.id,
+      activeHabitIds,
+      isoDateBefore(body.loggedFor, 7),
+      body.loggedFor,
+      requiredThreshold,
+    );
+
     const streakOutcome = advanceStreak({
       state: streakState,
       today: body.loggedFor,
-      completionPct,
-      requiredThreshold: STREAK_THRESHOLD_BY_DIFFICULTY[profile.difficulty as Difficulty],
-      freezesAllowedThisMonth: 1,
-      freezesUsedThisMonth: 0, // TODO: derive from streakState.freezeUsedOn vs current month
-      wasActiveSixOfLastSeven: false, // TODO: needs a 7-day habit_logs lookback query
+      // The day's rate, not this one habit's: passing `completionPct` here let
+      // a single 100%-completed habit hold an `extreme` (95%) streak.
+      completionPct: dayPct,
+      requiredThreshold,
+      freezesAllowedThisMonth: FREEZES_PER_MONTH_DEFAULT, // TODO: +1 with the Anchor skill (user_skills)
+      freezesUsedThisMonth:
+        streakState.freezeUsedOn && isSameCalendarMonth(streakState.freezeUsedOn, body.loggedFor)
+          ? 1
+          : 0,
+      wasActiveSixOfLastSeven: activeDaysBefore >= 6,
     });
-    await db.from('streaks').upsert({
-      user_id: user.id,
-      scope: 'global',
-      scope_ref: null,
-      current_count: streakOutcome.state.currentCount,
-      longest_count: streakOutcome.state.longestCount,
-      last_completed_on: streakOutcome.state.lastCompletedOn,
-      freeze_used_on: streakOutcome.state.freezeUsedOn,
-      updated_at: new Date().toISOString(),
-    });
+    const { error: streakError } = await db.from('streaks').upsert(
+      {
+        user_id: user.id,
+        scope: 'global',
+        scope_ref: null,
+        current_count: streakOutcome.state.currentCount,
+        longest_count: streakOutcome.state.longestCount,
+        last_completed_on: streakOutcome.state.lastCompletedOn,
+        freeze_used_on: streakOutcome.state.freezeUsedOn,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,scope,scope_ref' },
+    );
+    // Not fatal — the XP is already granted and the log already written, so
+    // failing the whole request here would strand the client. But it must not
+    // stay silent the way it did while it was writing NaN.
+    if (streakError) console.error('streak upsert failed', streakError.message);
 
     const achievements = await evaluateAndUnlockAchievements(user.id);
 
@@ -227,6 +302,8 @@ Deno.serve(async (req: Request) => {
         xpAwarded,
         coinsAwarded,
         completionPct,
+        dayCompletionPct: dayPct,
+        isPerfectDay: perfectDay,
         multiplier: multiplier.multiplier,
         dailyXpCap: DAILY_XP_CAP,
         level: levelProgress,
