@@ -144,3 +144,75 @@ export function isWithinComebackWindow(comebackStartedOn: IsoDate, today: IsoDat
   const elapsed = daysBetween(comebackStartedOn, today);
   return elapsed >= 0 && elapsed < COMEBACK_STREAK_BONUS_DAYS;
 }
+
+// ---------------------------------------------------------------------------
+// Day completion — the inputs `advanceStreak` and the XP multiplier document
+// but never had a producer, so both callers were improvising their own.
+// ---------------------------------------------------------------------------
+
+/** One habit's result for a given day, as `habit_logs` stores it. */
+export interface HabitDayLog {
+  habitId: string;
+  /** 0-100, the same figure award-habit-xp writes to habit_logs.completion_pct. */
+  completionPct: number;
+}
+
+function completionByHabit(logs: readonly HabitDayLog[]): Map<string, number> {
+  const byHabit = new Map<string, number>();
+  for (const log of logs) {
+    const clamped = Math.min(100, Math.max(0, log.completionPct));
+    // A habit can only be logged once per day (habit_logs' unique constraint),
+    // but keep the best value if a caller ever passes duplicates.
+    byHabit.set(log.habitId, Math.max(byHabit.get(log.habitId) ?? 0, clamped));
+  }
+  return byHabit;
+}
+
+/**
+ * Today's completion rate across every *active* habit — precisely the value
+ * `AdvanceStreakInput.completionPct` documents.
+ *
+ * Unlogged habits count as 0 on purpose. Averaging over only the habits the
+ * user bothered to log would make even `extreme` (95%) trivially passable by
+ * logging a single habit at 100% and ignoring the other nine — the threshold
+ * is supposed to gate the streak on the *day*, not on the subset of the day
+ * the user chose to report (CDC §40).
+ */
+export function dayCompletionPct(
+  activeHabitIds: readonly string[],
+  logs: readonly HabitDayLog[],
+): number {
+  if (activeHabitIds.length === 0) return 0;
+  const byHabit = completionByHabit(logs);
+  const total = activeHabitIds.reduce((sum, id) => sum + (byHabit.get(id) ?? 0), 0);
+  return Math.round(total / activeHabitIds.length);
+}
+
+/**
+ * CDC §19 — a Perfect Day is every active habit *fully* completed, not merely
+ * every active habit logged. A 60%-completed numeric habit is a logged habit
+ * and not a perfect one.
+ */
+export function isPerfectDay(
+  activeHabitIds: readonly string[],
+  logs: readonly HabitDayLog[],
+): boolean {
+  if (activeHabitIds.length === 0) return false;
+  const byHabit = completionByHabit(logs);
+  return activeHabitIds.every((id) => (byHabit.get(id) ?? 0) >= 100);
+}
+
+/**
+ * Whether two ISO dates fall in the same calendar month — the window the
+ * Streak Freeze monthly cap is measured over (CDC §42). Lives here rather
+ * than in each Edge Function because both `award-habit-xp` and
+ * `advance-streak` need the exact same window to agree on how many freezes
+ * a user has already spent.
+ */
+export function isSameCalendarMonth(a: IsoDate, b: IsoDate): boolean {
+  return a.slice(0, 7) === b.slice(0, 7);
+}
+
+/** Default monthly Streak Freeze allowance; the Anchor skill doubles it (CDC §22). */
+export const FREEZES_PER_MONTH_DEFAULT = 1;
+export const FREEZES_PER_MONTH_WITH_ANCHOR = 2;

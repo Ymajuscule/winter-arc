@@ -3,6 +3,9 @@ import {
   STREAK_THRESHOLD_BY_DIFFICULTY,
   type StreakState,
   advanceStreak,
+  dayCompletionPct,
+  isPerfectDay,
+  isSameCalendarMonth,
   isWithinComebackWindow,
   milestoneReachedAt,
 } from './streaks';
@@ -153,5 +156,97 @@ describe('STREAK_THRESHOLD_BY_DIFFICULTY', () => {
     expect(STREAK_THRESHOLD_BY_DIFFICULTY.normal).toBe(75);
     expect(STREAK_THRESHOLD_BY_DIFFICULTY.hard).toBe(85);
     expect(STREAK_THRESHOLD_BY_DIFFICULTY.extreme).toBe(95);
+  });
+});
+
+describe('dayCompletionPct', () => {
+  it('counts unlogged active habits as zero, not as absent', () => {
+    // The bug this function exists to prevent: one habit logged at 100% out of
+    // ten is a 10% day, not a 100% day.
+    const pct = dayCompletionPct(
+      ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'],
+      [{ habitId: 'a', completionPct: 100 }],
+    );
+    expect(pct).toBe(10);
+  });
+
+  it('averages partial completions across every active habit', () => {
+    const pct = dayCompletionPct(
+      ['a', 'b', 'c', 'd'],
+      [
+        { habitId: 'a', completionPct: 100 },
+        { habitId: 'b', completionPct: 50 },
+        { habitId: 'c', completionPct: 75 },
+      ],
+    );
+    expect(pct).toBe(56); // (100 + 50 + 75 + 0) / 4 = 56.25
+  });
+
+  it('ignores logs for habits that are no longer active', () => {
+    const pct = dayCompletionPct(
+      ['a'],
+      [
+        { habitId: 'a', completionPct: 100 },
+        { habitId: 'archived', completionPct: 100 },
+      ],
+    );
+    expect(pct).toBe(100);
+  });
+
+  it('clamps out-of-range completion values', () => {
+    expect(dayCompletionPct(['a', 'b'], [{ habitId: 'a', completionPct: 250 }])).toBe(50);
+    expect(dayCompletionPct(['a'], [{ habitId: 'a', completionPct: -30 }])).toBe(0);
+  });
+
+  it('is zero when the user has no active habits at all', () => {
+    expect(dayCompletionPct([], [{ habitId: 'a', completionPct: 100 }])).toBe(0);
+  });
+});
+
+describe('isPerfectDay', () => {
+  it('requires every active habit fully completed', () => {
+    expect(
+      isPerfectDay(
+        ['a', 'b'],
+        [
+          { habitId: 'a', completionPct: 100 },
+          { habitId: 'b', completionPct: 100 },
+        ],
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects a day where one habit is only partially completed', () => {
+    expect(
+      isPerfectDay(
+        ['a', 'b'],
+        [
+          { habitId: 'a', completionPct: 100 },
+          { habitId: 'b', completionPct: 60 },
+        ],
+      ),
+    ).toBe(false);
+  });
+
+  it('rejects a day where an active habit was never logged', () => {
+    expect(isPerfectDay(['a', 'b'], [{ habitId: 'a', completionPct: 100 }])).toBe(false);
+  });
+
+  it('is false with no active habits — an empty day is not a perfect one', () => {
+    expect(isPerfectDay([], [])).toBe(false);
+  });
+});
+
+describe('isSameCalendarMonth', () => {
+  it('matches two dates inside one month', () => {
+    expect(isSameCalendarMonth('2026-08-01', '2026-08-31')).toBe(true);
+  });
+
+  it('rejects adjacent days across a month boundary', () => {
+    expect(isSameCalendarMonth('2026-08-31', '2026-09-01')).toBe(false);
+  });
+
+  it('rejects the same month in different years', () => {
+    expect(isSameCalendarMonth('2025-08-15', '2026-08-15')).toBe(false);
   });
 });
