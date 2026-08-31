@@ -46,3 +46,6 @@ credentials.json
 
 # Misc
 *.tsbuildinfo
+
+# generated deploy bundles (scripts/package-edge-functions.mjs)
+supabase/.deploy/
