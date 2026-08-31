@@ -37,7 +37,8 @@
 
 ### Blockers
 
-_(none)_
+- 🚧 **Supabase and Expo connectors dropped mid-operation** when Julien asked for the updates to be applied and a preview build cut. Both MCP servers disconnected after the first two calls, and there is no fallback credential in this environment (`SUPABASE_ACCESS_TOKEN` / `EXPO_TOKEN` both unset, `~/.expo/state.json` holds no session), so neither the Supabase CLI nor the Management API is reachable either. What was established before the drop: project `winter-arc-staging` (`hexoluuqagxhplrgfsme`) is `ACTIVE_HEALTHY`, and `list_migrations` confirms **7 applied** (the 5 original + `enable_cron_and_net` + `advance_streak_cron`) — so the two new 2026-08-31 migrations are genuinely still pending, as is the redeploy of the three touched functions.
+- Groundwork done instead, so the next attempt is mechanical: `scripts/package-edge-functions.mjs` builds the flattened, self-contained bundle every deploy path actually needs (the monorepo-relative game-engine imports resolve past the bundle root otherwise — the 2026-08-28 session repackaged six functions by hand), and `--check` runs `deno check` on the bundle *as deployed*. All 8 pass. `apps/mobile/eas.json` did not exist at all, so no preview build was runnable regardless; three profiles now exist, with `apps/mobile/EAS.md` covering the `.env`-is-gitignored trap that would otherwise ship an app stuck on "Sign-in isn't configured yet".
 
 ### Decisions needed from Julien
 
