@@ -28,7 +28,10 @@ export function AchievementUnlockGate() {
   if (!currentId || !achievement) return null;
 
   const isFullScreen = achievement.rarity !== 'common' && achievement.rarity !== 'uncommon';
-  const accent = achievement.rarity === 'legendary' || achievement.rarity === 'mythic' ? frost.aurora : frost.ice;
+  const accent =
+    achievement.rarity === 'legendary' || achievement.rarity === 'mythic'
+      ? frost.aurora
+      : frost.ice;
 
   if (isFullScreen) {
     return (

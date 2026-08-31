@@ -26,7 +26,10 @@
  * recomputes and persists progress on every call (even a failed/incomplete
  * one), which is the only place `user_quests.progress` updates today.
  */
-import { DAILY_QUEST_SLOTS, WEEKLY_QUEST_SLOTS_MIN } from '../../../packages/game-engine/src/quests.ts';
+import {
+  DAILY_QUEST_SLOTS,
+  WEEKLY_QUEST_SLOTS_MIN,
+} from '../../../packages/game-engine/src/quests.ts';
 import { jsonResponse } from '../_shared/cors.ts';
 import { supabaseAdmin } from '../_shared/supabase-admin.ts';
 

@@ -26,7 +26,9 @@ export async function bootstrapAndEnterDashboard(): Promise<
       avatarId: null,
       habits: [],
     });
-    useAppStore.getState().initializeFromServer(response, { paletteId: 'frost', difficulty: 'normal' });
+    useAppStore
+      .getState()
+      .initializeFromServer(response, { paletteId: 'frost', difficulty: 'normal' });
     return { ok: true };
   } catch (err) {
     return {

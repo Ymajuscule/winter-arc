@@ -1,6 +1,11 @@
 import { AchievementUnlockGate } from '@/components/achievement-unlock-gate';
 import { LevelUpOverlay } from '@/components/level-up-overlay';
-import { type QuestInstance, useClaimQuest, useDailyQuests, useWeeklyQuests } from '@/hooks/use-quests';
+import {
+  type QuestInstance,
+  useClaimQuest,
+  useDailyQuests,
+  useWeeklyQuests,
+} from '@/hooks/use-quests';
 import { type AppHabit, useAppStore } from '@/stores/app-store';
 import { CLASSES, levelFromTotalXp } from '@winterarc/game-engine';
 import {

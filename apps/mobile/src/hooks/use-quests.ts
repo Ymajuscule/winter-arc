@@ -68,7 +68,9 @@ async function fetchQuestsForPeriod(
   if (!supabase) return [];
   const { data, error } = await supabase
     .from('user_quests')
-    .select('id, progress, status, quest_definitions(type, name, description, xp_reward, coins_reward)')
+    .select(
+      'id, progress, status, quest_definitions(type, name, description, xp_reward, coins_reward)',
+    )
     .eq('user_id', userId)
     .eq('period_start', periodStart)
     .eq('period_end', periodEnd);
@@ -102,9 +104,7 @@ export function useDailyQuests() {
 export function useWeeklyQuests() {
   const userId = useSessionStore((s) => s.session?.user.id);
   const weekStart = currentWeekStart();
-  const weekEnd = new Date(
-    new Date(`${weekStart}T00:00:00Z`).getTime() + 6 * 86_400_000,
-  )
+  const weekEnd = new Date(new Date(`${weekStart}T00:00:00Z`).getTime() + 6 * 86_400_000)
     .toISOString()
     .slice(0, 10);
 
