@@ -1,5 +1,14 @@
 /**
  * Classes — CDC v2.0 §29-30.
+ *
+ * `focusCategories` holds **habit category ids** — the same 12-value
+ * vocabulary as `habits.category`, `LINKED_STATS_BY_CATEGORY` (stats.ts) and
+ * onboarding's `DOMAINS`. It used to hold display labels ('Fitness',
+ * 'Focus', 'Discipline'), which was a real bug found on 2026-08-31 while
+ * verifying the app in a browser for the first time: three of those strings
+ * ('Focus', 'Discipline', 'Health') are stat names, not domains, so no habit
+ * could ever match them and the Monk's +15% synergy never once applied. See
+ * CATEGORY_IDS below — one vocabulary, checked by a test.
  */
 
 export type ClassId = 'warrior' | 'scholar' | 'monk' | 'ranger' | 'artisan' | 'sage' | 'wanderer';
@@ -16,40 +25,64 @@ export interface ClassDefinition {
   appliesToAllCategories?: boolean;
 }
 
+/**
+ * The canonical habit-category vocabulary. Every `habits.category` value,
+ * every `focusCategories` entry, and every `LINKED_STATS_BY_CATEGORY` key is
+ * one of these. Onboarding's `DOMAINS` list in apps/mobile is the user-facing
+ * label for each — the label is display text and must never be persisted as
+ * the category.
+ */
+export const CATEGORY_IDS = [
+  'fitness',
+  'mind',
+  'knowledge',
+  'career',
+  'finance',
+  'sleep',
+  'nutrition',
+  'energy',
+  'digital',
+  'mental',
+  'creativity',
+  'relationships',
+] as const;
+
+export type CategoryId = (typeof CATEGORY_IDS)[number];
+
 export const CLASSES: Record<ClassId, ClassDefinition> = {
   warrior: {
     id: 'warrior',
     name: 'Warrior',
     icon: '⚔️',
-    focusCategories: ['Fitness'],
+    focusCategories: ['fitness'],
     synergyBonusPct: 0.15,
   },
   scholar: {
     id: 'scholar',
     name: 'Scholar',
     icon: '📖',
-    focusCategories: ['Knowledge'],
+    focusCategories: ['knowledge'],
     synergyBonusPct: 0.15,
   },
   monk: {
     id: 'monk',
     name: 'Monk',
     icon: '🧘',
-    focusCategories: ['Focus', 'Discipline'],
+    focusCategories: ['mind', 'digital'], // meditation + digital detox — CDC §29's "méditation, deep work"
     synergyBonusPct: 0.15,
   },
   ranger: {
     id: 'ranger',
     name: 'Ranger',
     icon: '🏹',
-    focusCategories: ['Health', 'Energy'],
+    focusCategories: ['sleep', 'nutrition', 'energy'], // CDC §29's "sommeil, nutrition"
     synergyBonusPct: 0.15,
   },
   artisan: {
     id: 'artisan',
     name: 'Artisan',
     icon: '🎨',
-    focusCategories: ['Creativity'],
+    focusCategories: ['creativity'],
     synergyBonusPct: 0.15,
   },
   sage: {

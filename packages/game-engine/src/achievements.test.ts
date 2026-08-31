@@ -48,16 +48,16 @@ describe('evaluateAchievementCondition', () => {
   });
 
   it('scopes habit completions by category ("100 Workouts", CDC §46)', () => {
-    const ctx = { ...baseCtx, habitCompletionsByCategory: { Fitness: 100, Knowledge: 5 } };
+    const ctx = { ...baseCtx, habitCompletionsByCategory: { fitness: 100, knowledge: 5 } };
     expect(
       evaluateAchievementCondition(
-        { type: 'habit_completions_total', count: 100, category: 'Fitness' },
+        { type: 'habit_completions_total', count: 100, category: 'fitness' },
         ctx,
       ),
     ).toBe(true);
     expect(
       evaluateAchievementCondition(
-        { type: 'habit_completions_total', count: 100, category: 'Knowledge' },
+        { type: 'habit_completions_total', count: 100, category: 'knowledge' },
         ctx,
       ),
     ).toBe(false);

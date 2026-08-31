@@ -12,10 +12,10 @@ const baseCtx: QuestEvalContext = {
 
 describe('evaluateQuestProgress', () => {
   it('computes a ratio for habit_completions_in_period ("4 workouts this week", CDC §34)', () => {
-    const ctx = { ...baseCtx, habitCompletionsInPeriodByCategory: { Fitness: 2 } };
+    const ctx = { ...baseCtx, habitCompletionsInPeriodByCategory: { fitness: 2 } };
     expect(
       evaluateQuestProgress(
-        { type: 'habit_completions_in_period', count: 4, category: 'Fitness' },
+        { type: 'habit_completions_in_period', count: 4, category: 'fitness' },
         ctx,
       ),
     ).toBe(50);

@@ -21,7 +21,13 @@ function suggestHabits(
       drafts.push({
         id: `${domainId}-${goalId}`,
         name: goal.label,
-        category: domain.label,
+        // The domain **id**, never `domain.label`. The label is display text;
+        // this value is persisted as `habits.category` and matched against
+        // game-engine's CATEGORY_IDS by both the class-synergy bonus and the
+        // stat catalog. Storing "Fitness" instead of "fitness" silently
+        // collapsed every stat onto the default and made the Monk's synergy
+        // unreachable — found 2026-08-31 in a browser run.
+        category: domain.id,
         included: true,
       });
     }
@@ -81,7 +87,11 @@ export default function HabitsScreen() {
           style={styles.addInput}
           onSubmitEditing={() => {
             if (customName.trim()) {
-              addCustomHabit(customName.trim(), 'Custom');
+              // Lowercase, and deliberately not one of CATEGORY_IDS: a habit
+              // the user invented has no domain, so it takes
+              // DEFAULT_LINKED_STATS (discipline) rather than being filed
+              // under someone else's category.
+              addCustomHabit(customName.trim(), 'custom');
               setCustomName('');
             }
           }}

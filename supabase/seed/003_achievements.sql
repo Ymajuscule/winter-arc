@@ -33,7 +33,7 @@ insert into public.achievements (id, name, description, rarity, category, condit
   ('the-devoted', 'The Devoted', '10 Perfect Days (100% habit completion).', 'rare', 'consistency', '{"type":"perfect_days_total","count":10}', 350, 120, false),
 
   -- Domain-specific (filed under progression per CDC §44's 5-category struct)
-  ('hundred-workouts', '100 Workouts', '100 Fitness-category habit completions.', 'rare', 'progression', '{"type":"habit_completions_total","count":100,"category":"Fitness"}', 350, 120, false),
+  ('hundred-workouts', '100 Workouts', '100 Fitness-category habit completions.', 'rare', 'progression', '{"type":"habit_completions_total","count":100,"category":"fitness"}', 350, 120, false),
   ('thousand-book-pages', '1 000 Book Pages', '1 000 pages logged via a reading habit.', 'uncommon', 'progression', '{"type":"metric_total_at_least","metric":"book_pages_read","amount":1000}', 250, 100, false),
   ('fifty-hours-deep-work', '50h Deep Work', '3 000 minutes of logged deep work.', 'rare', 'progression', '{"type":"metric_total_at_least","metric":"deep_work_minutes","amount":3000}', 350, 120, false),
   ('zen-master', 'Zen Master', '100 meditation sessions.', 'epic', 'progression', '{"type":"metric_total_at_least","metric":"meditation_sessions","amount":100}', 700, 250, false),
