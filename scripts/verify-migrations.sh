@@ -54,9 +54,19 @@ create or replace function auth.uid() returns uuid language sql stable as $$ sel
 create or replace function auth.role() returns text language sql stable as $$ select 'authenticated'::text $$;
 SQL
 
+# pg_cron and pg_net ship with Supabase, not with stock Postgres, so the two
+# scheduler migrations can't run here. Skipping them is honest — pretending
+# to have verified them would be worse than saying which ones weren't.
+SKIP_LOCALLY='enable_cron_and_net|advance_streak_cron'
+
 echo "==> migrations"
 for m in $(ls "$REPO"/supabase/migrations/*.sql | grep -v '_down\.sql$' | sort); do
-  printf '    %-52s' "$(basename "$m")"; psql_db -q -f "$m"; echo "ok"
+  name="$(basename "$m")"
+  if echo "$name" | grep -qE "$SKIP_LOCALLY"; then
+    printf '    %-52s%s\n' "$name" "skipped (needs pg_cron/pg_net — Supabase only)"
+    continue
+  fi
+  printf '    %-52s' "$name"; psql_db -q -f "$m"; echo "ok"
 done
 
 echo "==> seeds"
